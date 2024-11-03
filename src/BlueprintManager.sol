@@ -69,9 +69,8 @@ contract BlueprintManager is IBlueprintManager, FlashAccounting {
 		uint256 id,
 		uint256 amount
 	) public virtual returns (bool) {
-		if (msg.sender != sender && !isOperator[sender][msg.sender]) {
+		if (msg.sender != sender && !isOperator[sender][msg.sender])
 			_decreaseApproval(sender, id, amount);
-		}
 
 		_transferFrom(sender, receiver, id, amount);
 
