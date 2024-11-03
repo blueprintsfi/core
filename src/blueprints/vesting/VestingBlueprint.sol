@@ -29,7 +29,7 @@ contract VestingBlueprint is BasicBlueprint {
 			uint256 preferredFinalBatch,
 			uint256 desiredFillPerBatch
 		) = abi.decode(
-			action, 
+			action,
 			(uint256, uint256, uint256, address, bytes, uint256, uint256)
 		);
 

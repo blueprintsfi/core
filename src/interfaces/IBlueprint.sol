@@ -4,7 +4,7 @@ pragma solidity ^0.8.0;
 import {TokenOp} from "./IBlueprintManager.sol";
 
 /**
- * @title A Token's Interface
+ * @title Blueprint's Interface
  * @author Czar102
  */
 interface IBlueprint {

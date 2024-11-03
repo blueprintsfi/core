@@ -58,7 +58,7 @@ contract ERC20Blueprint is BasicBlueprint {
 			// we can override the receiver address, let's save it in `from`
 			if (data.length == 32)
 				(from) = abi.decode(data, (address));
-			
+
 			blueprintManager.mint(from, uint256(uint160(msg.sender)), amount);
 		}
 	}

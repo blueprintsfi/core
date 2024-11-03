@@ -25,7 +25,7 @@ contract LinearCliffVestingSchedule is IVestingSchedule {
 
 		if (block.timestamp > endVesting)
 			return amount;
-		
+
 		unchecked {
 			if (block.timestamp > startVesting)
 				return amount * (block.timestamp - startVesting) / (endVesting - startVesting);

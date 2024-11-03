@@ -150,7 +150,7 @@ abstract contract FlashAccounting {
 				let preDeltaSlot := add(deltaSlot, 1)
 				// if first bits are 01 or 10, the carry is 1, else 2
 				let carry := sub(2, shr(255, add(newDelta, _2_POW_254)))
-				
+
 				// ignore preDeltaSlot if there is no extension
 				let preDelta := 0
 				if and(deltaVal, 1) {
