@@ -391,4 +391,36 @@ contract BlueprintManagerTest is Test {
 		assertEq(manager.balanceOf(address(basket), erc20Id), amount1);
 		assertEq(manager.balanceOf(from, id), outputAmount);
 	}
+
+	function test_transferFrom(
+		address from,
+		address sender,
+		uint256 amount,
+		bool setApproval,
+		bool setOperator
+	) public {
+		from = sender;
+		manager.mint(from, 0, amount);
+		uint256 id = HashLib.getTokenId(address(this), 0);
+
+		vm.startPrank(from);
+		if (setApproval)
+			manager.approve(sender, id, amount);
+
+		manager.setOperator(sender, setOperator);
+		vm.stopPrank();
+
+		bool willFail = !setApproval &&
+			!setOperator &&
+			from != sender &&
+			amount != 0;
+
+		vm.prank(sender);
+		if (willFail)
+			vm.expectRevert();
+		manager.transferFrom(from, address(this), id, amount);
+
+		if (!willFail)
+			assertEq(manager.balanceOf(address(this), id), amount);
+	}
 }
