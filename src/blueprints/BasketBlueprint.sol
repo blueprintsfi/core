@@ -26,32 +26,40 @@ contract BasketBlueprint is BasicBlueprint {
 			abi.decode(action, (bool, uint256[], uint256[]));
 
 		uint256 len = ids.length;
-		if (len != amounts.length)
-			revert LengthsMisaligned();
-
-		if (len == 0)
-			revert ZeroLength();
+		if (len != amounts.length) revert LengthsMisaligned();
+		if (len == 0) revert ZeroLength();
 
 		TokenOp[] memory giveTake = new TokenOp[](len);
-		uint256 basket = 0;
-		for (uint256 i = 0; i < len; i++) {
+		uint256 basket = amounts[0];
+
+		for (uint256 i = 0; i < len; ++i) {
 			uint256 amount = amounts[i];
-			if (amount == 0)
-				revert ZeroAmount();
+			if (amount == 0) revert ZeroAmount();
 			giveTake[i] = TokenOp(ids[i], amount);
 			basket = gcd(basket, amount);
 		}
-
+		
 		for (uint256 i = 0; i < len; i++)
 			amounts[i] /= basket;
 
-		// todo: gas bad
-		// todo: id is dependent on the order of tokens, should they be sorted?
-		uint256 id = uint256(keccak256(abi.encodePacked(ids, amounts)));
+		uint256 id = uint256(keccak256(abi.encodePacked(_sort(ids), amounts)));
 		TokenOp[] memory mintBurn = oneOperationArray(id, basket);
+
 
 		return wrap ?
 			(mintBurn, zero(), zero(), giveTake) :
 			(zero(), mintBurn, giveTake, zero());
+	}
+
+	function _sort(uint256[] memory arr) private pure returns (uint256[] memory) {
+		uint256 len = arr.length;
+		for (uint256 i = 0; i < len - 1; ++i) {
+			for (uint256 j = 0; j < len - i - 1; ++j) {
+				if (arr[j] > arr[j + 1]) {
+					(arr[j], arr[j + 1]) = (arr[j + 1], arr[j]);
+				}
+			}
+		}
+		return arr;
 	}
 }
