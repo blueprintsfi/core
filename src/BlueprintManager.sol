@@ -27,37 +27,40 @@ contract BlueprintManager is IBlueprintManager, FlashAccounting {
 	/// @notice eip-6909 allowance mapping
 	mapping(address => mapping(address => mapping(uint256 => uint256))) public allowance;
 
-	/// @notice Domain separator for EIP-712 signatures
-	bytes32 public DOMAIN_SEPARATOR;
+	/// @notice Cache the domain separator for EIP-712 signatures
+    bytes32 private _CACHED_DOMAIN_SEPARATOR;
+
+	/// @notice Cache the chain ID
+    uint256 private _CACHED_CHAIN_ID;
+
+	bytes32 private _HASHED_NAME;
+    bytes32 private _HASHED_VERSION;
+    bytes32 private _TYPE_HASH;
 
 	// Struct and type hashes for EIP-712 permit function
-	bytes32 public constant APPROVAL_TYPEHASH = keccak256(
+	bytes32 private _PERMIT_TYPEHASH_APPROVAL = keccak256(
 		"Permit(address owner,address spender,uint256 id,uint256 amount,uint256 nonce,uint256 deadline)"
 	);
-	bytes32 public constant OPERATOR_TYPEHASH = keccak256(
+	bytes32 private _PERMIT_TYPEHASH_OPERATOR = keccak256(
 		"PermitOperator(address owner,address operator,bool approved,uint256 nonce,uint256 deadline)"
 	);
-
-	uint256 public chainId;
 
 	mapping(address => uint256) public approval_nonces;
 	mapping(address => uint256) public operator_nonces;
 
 	constructor() {
-		assembly {
-			chainId := chainId()
-		}
-		DOMAIN_SEPARATOR = keccak256(
-			abi.encode(
-				keccak256(
-					"EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
-				),
-				keccak256(bytes("BlueprintManager")),
-				keccak256(bytes("1")),
-				chainId,
-				address(this)
-			)
-		);
+		bytes32 hashedName = keccak256(bytes("BlueprintManager"));
+        bytes32 hashedVersion = keccak256(bytes("1"));
+        bytes32 typeHash =
+            keccak256(
+                "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+            );
+		
+        _HASHED_NAME = hashedName;
+        _HASHED_VERSION = hashedVersion;
+        _CACHED_CHAIN_ID = _getChainId();
+        _CACHED_DOMAIN_SEPARATOR = _buildDomainSeparator(typeHash, hashedName, hashedVersion);
+        _TYPE_HASH = typeHash;
 	}
 
 	function _mint(address to, uint256 id, uint256 amount) internal override {
@@ -83,6 +86,35 @@ contract BlueprintManager is IBlueprintManager, FlashAccounting {
 		if (allowed != type(uint256).max)
 			allowance[sender][msg.sender][id] = allowed - amount;
 	}
+	
+    function _getChainId() private view returns (uint256 chainId) {
+        assembly {
+            chainId := chainid()
+        }
+    }
+
+	function _hashTypedDataV4(bytes32 structHash) internal view returns (bytes32) {
+        return keccak256(abi.encodePacked("\x19\x01", _domainSeparatorV4(), structHash));
+    }
+
+	/**
+     * @dev Returns the domain separator for the current chain.
+     */
+    function _domainSeparatorV4() internal view returns (bytes32) {
+        if (_getChainId() == _CACHED_CHAIN_ID) {
+            return _CACHED_DOMAIN_SEPARATOR;
+        } else {
+            return _buildDomainSeparator(_TYPE_HASH, _HASHED_NAME, _HASHED_VERSION);
+        }
+    }
+
+	function _buildDomainSeparator(
+        bytes32 typeHash,
+        bytes32 name,
+        bytes32 version
+    ) private view returns (bytes32) {
+        return keccak256(abi.encode(typeHash, name, version, _getChainId(), address(this)));
+    }
 
 	/**
 	 * @notice transfers `amount` of token `id` to `receiver`
@@ -132,29 +164,6 @@ contract BlueprintManager is IBlueprintManager, FlashAccounting {
 		return true;
 	}
 
-	function checkChainId() internal {
-		uint256 nowChainId;
-		assembly {
-			nowChainId := chainId()
-		}
-
-		if(chainId != nowChainId) {
-			chainId = nowChainId;
-			
-			DOMAIN_SEPARATOR = keccak256(
-				abi.encode(
-					keccak256(
-						"EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
-					),
-					keccak256(bytes("BlueprintManager")),
-					keccak256(bytes("1")),
-					chainId,
-					address(this)
-				)
-			);
-		}
-	}
-
 	//EIP-712 permit function for approvals
 	function permit(
 		address owner,
@@ -171,7 +180,7 @@ contract BlueprintManager is IBlueprintManager, FlashAccounting {
 
 		bytes32 structHash = keccak256(
 			abi.encode(
-				APPROVAL_TYPEHASH,
+				_PERMIT_TYPEHASH_APPROVAL,
 				owner,
 				spender,
 				id,
@@ -181,11 +190,7 @@ contract BlueprintManager is IBlueprintManager, FlashAccounting {
 			)
 		);
 
-		checkChainId();
-
-		bytes32 hash = keccak256(
-			abi.encodePacked("\x19\x01", DOMAIN_SEPARATOR, structHash)
-		);
+		bytes32 hash = _hashTypedDataV4(structHash);
 
 		address signer = ecrecover(hash, v, r, s);
 		if (signer == address(0) || signer != owner)
@@ -208,7 +213,7 @@ contract BlueprintManager is IBlueprintManager, FlashAccounting {
 
 		bytes32 structHash = keccak256(
 			abi.encode(
-				OPERATOR_TYPEHASH,
+				_PERMIT_TYPEHASH_OPERATOR,
 				owner,
 				operator,
 				approved,
@@ -217,11 +222,7 @@ contract BlueprintManager is IBlueprintManager, FlashAccounting {
 			)
 		);
 
-		checkChainId();
-
-		bytes32 hash = keccak256(
-			abi.encodePacked("\x19\x01", DOMAIN_SEPARATOR, structHash)
-		);
+		bytes32 hash = _hashTypedDataV4(structHash);
 
 		address signer = ecrecover(hash, v, r, s);
 		if (signer == address(0) || signer != owner)
