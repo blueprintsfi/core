@@ -5,9 +5,11 @@ import {Test, console2} from "forge-std/Test.sol";
 import {BlueprintManager, TokenOp, BlueprintCall, HashLib} from "../src/BlueprintManager.sol";
 import {NativeBlueprint} from "../src/blueprints/wrappers/NativeBlueprint.sol";
 import {ERC20Blueprint} from "../src/blueprints/wrappers/ERC20Blueprint.sol";
+import {ERC721Blueprint} from "../src/blueprints/wrappers/ERC721Blueprint.sol";
 import {VestingBlueprint, IVestingSchedule} from "../src/blueprints/vesting/VestingBlueprint.sol";
 import {BasketBlueprint} from "../src/blueprints/BasketBlueprint.sol";
 import {ERC20 as ERC20Abstract} from "solmate/tokens/ERC20.sol";
+import {ERC721 as ERC721Abstract} from "solmate/tokens/ERC721.sol";
 
 import {LinearCliffVestingSchedule} from "../src/blueprints/vesting/schedules/LinearCliffVestingSchedule.sol";
 
@@ -20,6 +22,16 @@ contract ERC20 is ERC20Abstract("Test Token", "TT", 18) {
 	}
 }
 
+contract ERC721 is ERC721Abstract("Test NFT", "TNFT") {
+	function mint(address to, uint256 tokenId) public {
+		_mint(to, tokenId);
+	}
+
+	function tokenURI(uint256 /* id */) public pure override returns (string memory) {
+		return "test tokenURI";
+	}
+}
+
 contract BlueprintManagerTest is Test {
 	error NoFlashAccountingActive();
 
@@ -27,9 +39,11 @@ contract BlueprintManagerTest is Test {
 	NativeBlueprint native = new NativeBlueprint(manager);
 	IBlueprint vesting = new VestingBlueprint(manager);
 	ERC20Blueprint erc20wrapper = new ERC20Blueprint(manager);
+	ERC721Blueprint erc721wrapper = new ERC721Blueprint(manager);
 	IBlueprint basket = new BasketBlueprint(manager);
 	IVestingSchedule schedule = new LinearCliffVestingSchedule();
 	ERC20 erc20 = new ERC20();
+	ERC721 erc721 = new ERC721();
 
 	BlueprintCall[] public scheduledCalls;
 
@@ -422,5 +436,53 @@ contract BlueprintManagerTest is Test {
 
 		if (!willFail)
 			assertEq(manager.balanceOf(address(this), id), amount);
+	}
+
+	function test_erc721Wrap(address from, address to, uint256 nftId) public returns (uint256 id) {
+		vm.assume(nftId != type(uint256).max);
+		vm.assume(from != address(erc721wrapper));
+		vm.assume(from != address(0));
+		id = HashLib.getTokenId(address(erc721wrapper), uint256(uint160(address(erc721))));
+		erc721.mint(address(from), nftId);
+
+		vm.startPrank(from);
+		erc721.approve(address(erc721wrapper), nftId);
+		erc721wrapper.deposit(address(erc721), to, nftId);
+		vm.stopPrank();
+
+		assertEq(erc721.balanceOf(address(erc721wrapper)), 1);
+		assertEq(manager.balanceOf(to, id), 1);
+	}
+
+	function test_erc721Withdraw(address from, address to, uint256 nftId) public {
+		vm.assume(to != address(erc721wrapper));
+		vm.assume(to != address(0));
+		vm.assume(isEOA(to));
+		uint256 id = test_erc721Wrap(from, from, nftId);
+		BlueprintCall[] memory calls = new BlueprintCall[](1);
+		calls[0] = BlueprintCall(
+			from,
+			address(erc721wrapper),
+			abi.encode(
+				erc721,
+				to,
+				nftId
+			),
+			bytes32(0)
+		);
+		vm.prank(from);
+		manager.cook(address(0), calls);
+
+		assertEq(erc721.balanceOf(address(erc721wrapper)), 0);
+		assertEq(erc721.balanceOf(to), 1);
+		assertEq(manager.balanceOf(from, id), 0);
+	}
+
+	function isEOA(address target) public view returns (bool) {
+		if(target.code.length == 0) {
+			return true;
+		}
+		
+		return false;
 	}
 }
