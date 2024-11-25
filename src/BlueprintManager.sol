@@ -16,6 +16,9 @@ contract BlueprintManager is IBlueprintManager, FlashAccounting {
 	error InvalidChecksum();
 	error AccessDenied();
 	error RealizeAccessDenied();
+	error PermitExpiredDeadline();
+	error InvalidSignature();
+
 
 	/// @notice eip-6909 operator mapping
 	mapping(address => mapping(address => bool)) public isOperator;
@@ -23,6 +26,42 @@ contract BlueprintManager is IBlueprintManager, FlashAccounting {
 	mapping(address => mapping(uint256 => uint256)) public balanceOf;
 	/// @notice eip-6909 allowance mapping
 	mapping(address => mapping(address => mapping(uint256 => uint256))) public allowance;
+
+	/// @notice Cache the domain separator for EIP-712 signatures
+    bytes32 private _CACHED_DOMAIN_SEPARATOR;
+
+	/// @notice Cache the chain ID
+    uint256 private _CACHED_CHAIN_ID;
+
+	bytes32 private _HASHED_NAME;
+    bytes32 private _HASHED_VERSION;
+    bytes32 private _TYPE_HASH;
+
+	// Struct and type hashes for EIP-712 permit function
+	bytes32 private _PERMIT_TYPEHASH_APPROVAL = keccak256(
+		"Permit(address owner,address spender,uint256 id,uint256 amount,uint256 nonce,uint256 deadline)"
+	);
+	bytes32 private _PERMIT_TYPEHASH_OPERATOR = keccak256(
+		"PermitOperator(address owner,address operator,bool approved,uint256 nonce,uint256 deadline)"
+	);
+
+	mapping(address => uint256) public approval_nonces;
+	mapping(address => uint256) public operator_nonces;
+
+	constructor() {
+		bytes32 hashedName = keccak256(bytes("BlueprintManager"));
+        bytes32 hashedVersion = keccak256(bytes("1"));
+        bytes32 typeHash =
+            keccak256(
+                "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+            );
+		
+        _HASHED_NAME = hashedName;
+        _HASHED_VERSION = hashedVersion;
+        _CACHED_CHAIN_ID = _getChainId();
+        _CACHED_DOMAIN_SEPARATOR = _buildDomainSeparator(typeHash, hashedName, hashedVersion);
+        _TYPE_HASH = typeHash;
+	}
 
 	function _mint(address to, uint256 id, uint256 amount) internal override {
 		balanceOf[to][id] += amount;
@@ -47,6 +86,35 @@ contract BlueprintManager is IBlueprintManager, FlashAccounting {
 		if (allowed != type(uint256).max)
 			allowance[sender][msg.sender][id] = allowed - amount;
 	}
+	
+    function _getChainId() private view returns (uint256 chainId) {
+        assembly {
+            chainId := chainid()
+        }
+    }
+
+	function _hashTypedDataV4(bytes32 structHash) internal view returns (bytes32) {
+        return keccak256(abi.encodePacked("\x19\x01", _domainSeparatorV4(), structHash));
+    }
+
+	/**
+     * @dev Returns the domain separator for the current chain.
+     */
+    function _domainSeparatorV4() internal view returns (bytes32) {
+        if (_getChainId() == _CACHED_CHAIN_ID) {
+            return _CACHED_DOMAIN_SEPARATOR;
+        } else {
+            return _buildDomainSeparator(_TYPE_HASH, _HASHED_NAME, _HASHED_VERSION);
+        }
+    }
+
+	function _buildDomainSeparator(
+        bytes32 typeHash,
+        bytes32 name,
+        bytes32 version
+    ) private view returns (bytes32) {
+        return keccak256(abi.encode(typeHash, name, version, _getChainId(), address(this)));
+    }
 
 	/**
 	 * @notice transfers `amount` of token `id` to `receiver`
@@ -94,6 +162,73 @@ contract BlueprintManager is IBlueprintManager, FlashAccounting {
 		isOperator[msg.sender][operator] = approved;
 
 		return true;
+	}
+
+	//EIP-712 permit function for approvals
+	function permit(
+		address owner,
+		address spender,
+		uint256 id,
+		uint256 amount,
+		uint256 deadline,
+		uint8 v,
+		bytes32 r,
+		bytes32 s
+	) external {
+		if(block.timestamp > deadline) 
+			revert PermitExpiredDeadline();
+
+		bytes32 structHash = keccak256(
+			abi.encode(
+				_PERMIT_TYPEHASH_APPROVAL,
+				owner,
+				spender,
+				id,
+				amount,
+				approval_nonces[owner]++,
+				deadline
+			)
+		);
+
+		bytes32 hash = _hashTypedDataV4(structHash);
+
+		address signer = ecrecover(hash, v, r, s);
+		if (signer == address(0) || signer != owner)
+			revert InvalidSignature();
+
+		allowance[owner][spender][id] = amount;
+	}
+
+	function permitOperator(
+		address owner,
+		address operator,
+		bool approved,
+		uint256 deadline,
+		uint8 v,
+		bytes32 r,
+		bytes32 s
+	) external {
+		if(block.timestamp > deadline) 
+			revert PermitExpiredDeadline();
+
+		bytes32 structHash = keccak256(
+			abi.encode(
+				_PERMIT_TYPEHASH_OPERATOR,
+				owner,
+				operator,
+				approved,
+				operator_nonces[owner]++,
+				deadline
+			)
+		);
+
+		bytes32 hash = _hashTypedDataV4(structHash);
+
+		address signer = ecrecover(hash, v, r, s);
+		if (signer == address(0) || signer != owner)
+			revert InvalidSignature();
+
+		isOperator[owner][operator] = approved;
 	}
 
 	function cook(
