@@ -21,7 +21,7 @@ abstract contract BasicBlueprint is IBlueprint {
 	}
 
 	function zero() internal pure returns (TokenOp[] memory z) {
-		assembly {
+		assembly ("memory-safe") {
 			z := 0x60
 		}
 	}
