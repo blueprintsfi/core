@@ -21,6 +21,7 @@ abstract contract FlashAccounting {
 
 	error BalanceDeltaOverflow();
 	error NoFlashAccountingActive();
+	error RealizeAccessDenied();
 
 	function exttload(uint256 slot) external view returns (uint256 value) {
 		assembly ("memory-safe") {
@@ -28,10 +29,10 @@ abstract contract FlashAccounting {
 		}
 	}
 
-	function getCurrentSessionAndRealizer() internal view returns (
-		FlashSession session,
-		address realizer
+	function getCurrentSession() internal view returns (
+		FlashSession session
 	) {
+		address realizer;
 		uint256 mainIndex;
 		assembly ("memory-safe") {
 			let mainClue := tload(0)
@@ -48,6 +49,9 @@ abstract contract FlashAccounting {
 
 			session := keccak256(20, 44)
 		}
+
+		if (realizer != address(0) && realizer != msg.sender)
+			revert RealizeAccessDenied();
 	}
 
 	// authorizedCaller is of type bytes32 so that top bits would be certain to

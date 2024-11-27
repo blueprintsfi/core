@@ -15,7 +15,6 @@ import {
 contract BlueprintManager is IBlueprintManager, FlashAccounting {
 	error InvalidChecksum();
 	error AccessDenied();
-	error RealizeAccessDenied();
 
 	/// @notice eip-6909 operator mapping
 	mapping(address => mapping(address => bool)) public isOperator;
@@ -96,99 +95,113 @@ contract BlueprintManager is IBlueprintManager, FlashAccounting {
 		return true;
 	}
 
-	function cook(
-		address realizer,
-		BlueprintCall[] calldata calls
-	) external {
-		uint256 len = calls.length;
-
+	function cook(address realizer, BlueprintCall[] calldata calls) external {
 		(FlashSession session, MainClue mainClue) = openFlashAccounting(realizer);
 
-		for (uint256 k = 0; k < len; k++) {
-			BlueprintCall calldata call = calls[k];
-			address blueprint = call.blueprint;
-
-			bool checkApprovals;
-			address sender = call.sender;
-			if (sender == address(0)) {
-				// no override
-				sender = msg.sender;
-			} else if (sender != msg.sender && !isOperator[sender][msg.sender]) {
-				checkApprovals = true;
-			}
-
-			// optimistically ask for execution
-			(
-				TokenOp[] memory mint,
-				TokenOp[] memory burn,
-				TokenOp[] memory give,
-				TokenOp[] memory take
-			) = IBlueprint(blueprint).executeAction(call.action);
-
-			if (call.checksum != 0) {
-				// we read mint, burn, give, take directly from returndata
-				bytes32 expected = HashLib.hashActionResults();
-
-				if (call.checksum != expected)
-					revert InvalidChecksum();
-			}
-
-			(FlashUserSession senderSession, UserClue senderClue) =
-				initializeUserSession(session, sender);
-
-			for (uint256 i = 0; i < mint.length; i++) {
-				senderClue = addUserCreditWithClue(
-					senderSession,
-					senderClue,
-					HashLib.getTokenId(blueprint, mint[i].tokenId),
-					mint[i].amount
-				);
-			}
-
-			for (uint256 i = 0; i < burn.length; i++) {
-				uint256 tokenId = HashLib.getTokenId(blueprint, burn[i].tokenId);
-				uint256 amount = burn[i].amount;
-
-				if (checkApprovals)
-					_decreaseApproval(sender, tokenId, amount);
-
-				senderClue = addUserDebitWithClue(senderSession, senderClue, tokenId, amount);
-			}
-
-			if (blueprint != sender && (give.length != 0 || take.length != 0)) {
-				(FlashUserSession blueprintSession, UserClue blueprintClue) =
-					initializeUserSession(session, blueprint);
-
-				for (uint256 i = 0; i < give.length; i++) {
-					uint256 id = give[i].tokenId;
-					uint256 amount = give[i].amount;
-					senderClue = addUserCreditWithClue(senderSession, senderClue, id, amount);
-					blueprintClue = addUserDebitWithClue(blueprintSession, blueprintClue, id, amount);
-				}
-
-				for (uint256 i = 0; i < take.length; i++) {
-					uint256 id = take[i].tokenId;
-					uint256 amount = take[i].amount;
-
-					if (checkApprovals)
-						_decreaseApproval(sender, id, amount);
-
-					senderClue = addUserDebitWithClue(senderSession, senderClue, id, amount);
-					blueprintClue = addUserCreditWithClue(blueprintSession, blueprintClue, id, amount);
-				}
-				saveUserClue(blueprintSession, blueprintClue);
-			}
-			saveUserClue(senderSession, senderClue);
-		}
+		uint256 len = calls.length;
+		for (uint256 k = 0; k < len; k++)
+			_flashCook(calls[k], session);
 
 		closeFlashAccounting(mainClue, session);
 	}
 
-	function credit(uint256 id, uint256 amount) external {
-		(FlashSession session, address realizer) = getCurrentSessionAndRealizer();
+	function cook(BlueprintCall[] calldata calls) external {
+		FlashSession session = getCurrentSession();
 
-		if (realizer != address(0) && realizer != msg.sender)
-			revert RealizeAccessDenied();
+		uint256 len = calls.length;
+		for (uint256 k = 0; k < len; k++)
+			_flashCook(calls[k], session);
+	}
+
+	function _executeAction(
+		BlueprintCall calldata call
+	) internal returns (
+		TokenOp[] memory mint,
+		TokenOp[] memory burn,
+		TokenOp[] memory give,
+		TokenOp[] memory take
+	) {
+		// optimistically ask for execution
+		(mint, burn, give, take) = IBlueprint(call.blueprint).executeAction(call.action);
+
+		if (call.checksum != 0) {
+			// we read mint, burn, give, take directly from returndata
+			bytes32 expected = HashLib.hashActionResults();
+
+			if (call.checksum != expected)
+				revert InvalidChecksum();
+		}
+	}
+
+	function _flashCook(BlueprintCall calldata call, FlashSession session) internal {
+		address blueprint = call.blueprint;
+
+		bool checkApprovals;
+		address sender = call.sender;
+		if (sender == address(0)) {
+			// no override
+			sender = msg.sender;
+		} else if (sender != msg.sender && !isOperator[sender][msg.sender]) {
+			checkApprovals = true;
+		}
+
+		(
+			TokenOp[] memory mint,
+			TokenOp[] memory burn,
+			TokenOp[] memory give,
+			TokenOp[] memory take
+		) = _executeAction(call);
+
+		(FlashUserSession senderSession, UserClue senderClue) =
+			initializeUserSession(session, sender);
+
+		for (uint256 i = 0; i < mint.length; i++) {
+			senderClue = addUserCreditWithClue(
+				senderSession,
+				senderClue,
+				HashLib.getTokenId(blueprint, mint[i].tokenId),
+				mint[i].amount
+			);
+		}
+
+		for (uint256 i = 0; i < burn.length; i++) {
+			uint256 tokenId = HashLib.getTokenId(blueprint, burn[i].tokenId);
+			uint256 amount = burn[i].amount;
+
+			if (checkApprovals)
+				_decreaseApproval(sender, tokenId, amount);
+
+			senderClue = addUserDebitWithClue(senderSession, senderClue, tokenId, amount);
+		}
+
+		if (blueprint != sender && (give.length != 0 || take.length != 0)) {
+			(FlashUserSession blueprintSession, UserClue blueprintClue) =
+				initializeUserSession(session, blueprint);
+
+			for (uint256 i = 0; i < give.length; i++) {
+				uint256 id = give[i].tokenId;
+				uint256 amount = give[i].amount;
+				senderClue = addUserCreditWithClue(senderSession, senderClue, id, amount);
+				blueprintClue = addUserDebitWithClue(blueprintSession, blueprintClue, id, amount);
+			}
+
+			for (uint256 i = 0; i < take.length; i++) {
+				uint256 id = take[i].tokenId;
+				uint256 amount = take[i].amount;
+
+				if (checkApprovals)
+					_decreaseApproval(sender, id, amount);
+
+				senderClue = addUserDebitWithClue(senderSession, senderClue, id, amount);
+				blueprintClue = addUserCreditWithClue(blueprintSession, blueprintClue, id, amount);
+			}
+			saveUserClue(blueprintSession, blueprintClue);
+		}
+		saveUserClue(senderSession, senderClue);
+	}
+
+	function credit(uint256 id, uint256 amount) external {
+		FlashSession session = getCurrentSession();
 
 		(FlashUserSession userSession, UserClue userClue) =
 			initializeUserSession(session, msg.sender);
@@ -200,10 +213,7 @@ contract BlueprintManager is IBlueprintManager, FlashAccounting {
 	}
 
 	function credit(TokenOp[] calldata ops) external {
-		(FlashSession session, address realizer) = getCurrentSessionAndRealizer();
-
-		if (realizer != address(0) && realizer != msg.sender)
-			revert RealizeAccessDenied();
+		FlashSession session = getCurrentSession();
 
 		(FlashUserSession userSession, UserClue userClue) =
 			initializeUserSession(session, msg.sender);
@@ -221,10 +231,7 @@ contract BlueprintManager is IBlueprintManager, FlashAccounting {
 
 	// todo: is this function useful at all?
 	function debit(uint256 id, uint256 amount) external {
-		(FlashSession session, address realizer) = getCurrentSessionAndRealizer();
-
-		if (realizer != address(0) && realizer != msg.sender)
-			revert RealizeAccessDenied();
+		FlashSession session = getCurrentSession();
 
 		(FlashUserSession userSession, UserClue userClue) =
 			initializeUserSession(session, msg.sender);
@@ -237,10 +244,7 @@ contract BlueprintManager is IBlueprintManager, FlashAccounting {
 
 	// todo: is this function useful at all?
 	function debit(TokenOp[] calldata ops) external {
-		(FlashSession session, address realizer) = getCurrentSessionAndRealizer();
-
-		if (realizer != address(0) && realizer != msg.sender)
-			revert RealizeAccessDenied();
+		FlashSession session = getCurrentSession();
 
 		(FlashUserSession userSession, UserClue userClue) =
 			initializeUserSession(session, msg.sender);
