@@ -45,7 +45,6 @@ Against Solidity's Style Guide, we use tabs for indentation. We try not to put m
 
 If you want to contribute, you could:
 - take a look at existing issues and chime in in the discussion!
-- introduce NatSpec to the source code
 - find areas to improve gas efficiency
 	- idea: reading `TokenOp`s straight from returndata in the manager could save a lot of gas; also to put them in a custom struct that puts the elements in place, not creates an array of pointers to structs
 - solve or answer any existing `todo`s

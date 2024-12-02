@@ -75,13 +75,13 @@ contract BlueprintManagerTest is Test {
 
 		vm.expectRevert(NoFlashAccountingActive.selector);
 		manager.credit(id, amount);
-		
+
 		vm.expectRevert(NoFlashAccountingActive.selector);
 		manager.credit(ops);
 
 		vm.expectRevert(NoFlashAccountingActive.selector);
 		manager.debit(id, amount);
-		
+
 		vm.expectRevert(NoFlashAccountingActive.selector);
 		manager.debit(ops);
 
@@ -324,7 +324,7 @@ contract BlueprintManagerTest is Test {
 		assertEq(erc20.balanceOf(address(erc20wrapper)), amount);
 		assertEq(manager.balanceOf(to, id), amount);
 	}
-	
+
 	function test_erc20Withdraw(address from, address to, uint256 amount) public {
 		vm.assume(to != address(erc20wrapper));
 		uint256 id = test_erc20Wrap(from, from, amount);
@@ -399,7 +399,6 @@ contract BlueprintManagerTest is Test {
 		bool setApproval,
 		bool setOperator
 	) public {
-		from = sender;
 		manager.mint(from, 0, amount);
 		uint256 id = HashLib.getTokenId(address(this), 0);
 
