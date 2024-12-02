@@ -34,11 +34,8 @@ contract SimpleOptionBlueprint is BasicBlueprint {
 		uint256 count = gcd(num, denom);
 		(num, denom) = (num / count, denom / count);
 
-		uint256 delta;
-		assembly {
-			delta := lt(token0, token1)
-		}
-		if (delta != 0) {
+		bool swap;
+		if (swap = token1 > token0) {
 			(token0, token1) = (token1, token0);
 			(num, denom) = (denom, num);
 		}
@@ -52,7 +49,8 @@ contract SimpleOptionBlueprint is BasicBlueprint {
 			// short option
 			mintBurn[0] = TokenOp(baseId + 2, count);
 			// now the baseId will be the call/put
-			baseId += delta;
+			if (swap)
+				baseId++;
 			mintBurn[1] = TokenOp(baseId, count);
 		}
 
@@ -80,12 +78,18 @@ contract SimpleOptionBlueprint is BasicBlueprint {
 		if (block.timestamp <= expiry || (block.timestamp <= settlement && msg.sender != settler))
 			revert AccessDenied();
 
+		bool swap;
+		if (swap = token1 > token0) {
+			(token0, token1) = (token1, token0);
+			(num, denom) = (denom, num);
+		}
+
 		unchecked {
 			blueprintManager.mint(
 				to,
 				uint256(keccak256(
 					abi.encodePacked(token0, token1, num, denom, expiry, settlement, settler)
-				)) + 2,
+				)) + (swap ? 1 : 0),
 				amount
 			);
 		}
