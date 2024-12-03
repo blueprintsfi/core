@@ -272,13 +272,13 @@ contract BlueprintManager is IBlueprintManager, FlashAccounting {
 	}
 
 	function burn(uint256 tokenId, uint256 amount) external {
-		_mint(msg.sender, HashLib.getTokenId(msg.sender, tokenId), amount);
+		_burn(msg.sender, HashLib.getTokenId(msg.sender, tokenId), amount);
 	}
 
 	function burn(TokenOp[] calldata ops) external {
 		uint256 len = ops.length;
 
 		for (uint256 i = 0; i < len; i++)
-			_mint(msg.sender, HashLib.getTokenId(msg.sender, ops[i].tokenId), ops[i].amount);
+			_burn(msg.sender, HashLib.getTokenId(msg.sender, ops[i].tokenId), ops[i].amount);
 	}
 }
