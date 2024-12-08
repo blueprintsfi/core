@@ -5,7 +5,9 @@ import {BasicBlueprint, TokenOp, IBlueprintManager} from "../BasicBlueprint.sol"
 import {HashLib} from "../../libraries/HashLib.sol";
 import {ERC1155, ERC1155TokenReceiver} from "solmate/tokens/ERC1155.sol";
 
-contract ERC1155Blueprint is BasicBlueprint, ERC1155TokenReceiver {
+import "forge-std/console.sol"; 
+
+contract Mock_ERC1155Blueprint is BasicBlueprint, ERC1155TokenReceiver {
 	constructor(IBlueprintManager manager) BasicBlueprint(manager) {}
 
 	function getOperations(
@@ -62,17 +64,17 @@ contract ERC1155Blueprint is BasicBlueprint, ERC1155TokenReceiver {
             TokenOp[] memory /* burn */, 
             TokenOp[] memory /* give */, 
             TokenOp[] memory /* take */
+        ) {}
+	function executeActionNew(bytes calldata action) 
+        external 
+        returns (
+            address erc1155,
+            address to,
+            uint256[] calldata ids,
+            uint256[] calldata amounts,
+            bytes calldata data
         ) 
     {
-		// todo: switch the arrays to calldata arrays with assembly for gas optimization
-		// (address erc1155, address to, uint256[] memory ids, uint256[] memory amounts, bytes memory data) =
-		// 	abi.decode(action, (address, address, uint256[], uint256[], bytes));
-        address erc1155;
-        address to;
-        uint256[] calldata ids;
-        uint256[] calldata amounts;
-        bytes calldata data;
-
         assembly {            
             erc1155 := calldataload(action.offset)
             
@@ -96,14 +98,15 @@ contract ERC1155Blueprint is BasicBlueprint, ERC1155TokenReceiver {
             data.offset := add(dataStart, 0x20)
             data.length := dataLength
         }
-
-        ERC1155(erc1155).safeBatchTransferFrom(address(this), to, ids, amounts, data);
-
-        return (
-            zero(),
-            getOperations(erc1155, ids, amounts),
-            zero(),
-            zero()
-        );
     }
+	function executeActionOld(bytes calldata action) external returns (
+            address erc1155,
+            address to,
+            uint256[] memory ids,
+            uint256[] memory amounts,
+            bytes memory data
+	) {
+		(erc1155, to, ids, amounts, data) =
+			abi.decode(action, (address, address, uint256[], uint256[], bytes));
+	}
 }
