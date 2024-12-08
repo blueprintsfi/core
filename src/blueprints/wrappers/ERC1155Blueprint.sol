@@ -74,24 +74,24 @@ contract ERC1155Blueprint is BasicBlueprint, ERC1155TokenReceiver {
         bytes calldata data;
 
         assembly {            
-            erc1155 := shr(96, calldataload(0))
+            erc1155 := calldataload(action.offset)
             
-            to := shr(96, calldataload(add(0, 0x20)))
+            to := calldataload(add(action.offset, 0x20))
             
-            let idsOffset := calldataload(add(0, 0x40))
-            let idsStart := add(0, idsOffset)
+            let idsOffset := calldataload(add(action.offset, 0x40))
+            let idsStart := add(action.offset, idsOffset)
             let idsLength := calldataload(idsStart)
             ids.offset := add(idsStart, 0x20)
             ids.length := idsLength
             
-            let amountsOffset := calldataload(add(0, 0x60))
-            let amountsStart := add(0, amountsOffset)
+            let amountsOffset := calldataload(add(action.offset, 0x60))
+            let amountsStart := add(action.offset, amountsOffset)
             let amountsLength := calldataload(amountsStart)
             amounts.offset := add(amountsStart, 0x20)
             amounts.length := amountsLength
 
-            let dataOffset := calldataload(add(0, 0x80))
-            let dataStart := add(0, dataOffset)
+            let dataOffset := calldataload(add(action.offset, 0x80))
+            let dataStart := add(action.offset, dataOffset)
             let dataLength := calldataload(dataStart)
             data.offset := add(dataStart, 0x20)
             data.length := dataLength
