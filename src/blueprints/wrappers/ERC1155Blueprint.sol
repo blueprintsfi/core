@@ -54,23 +54,56 @@ contract ERC1155Blueprint is BasicBlueprint, ERC1155TokenReceiver {
         return ERC1155TokenReceiver.onERC1155BatchReceived.selector;
     }
 
-	function executeAction(bytes calldata action) external onlyManager returns (
-		TokenOp[] memory /*mint*/,
-		TokenOp[] memory /*burn*/,
-		TokenOp[] memory /*give*/,
-		TokenOp[] memory /*take*/
-	) {
+	function executeAction(bytes calldata action) 
+        external 
+        onlyManager 
+        returns (
+            TokenOp[] memory /* mint */, 
+            TokenOp[] memory /* burn */, 
+            TokenOp[] memory /* give */, 
+            TokenOp[] memory /* take */
+        ) 
+    {
 		// todo: switch the arrays to calldata arrays with assembly for gas optimization
-		(address erc1155, address to, uint256[] memory ids, uint256[] memory amounts, bytes memory data) =
-			abi.decode(action, (address, address, uint256[], uint256[], bytes));
+		// (address erc1155, address to, uint256[] memory ids, uint256[] memory amounts, bytes memory data) =
+		// 	abi.decode(action, (address, address, uint256[], uint256[], bytes));
+        address erc1155;
+        address to;
+        uint256[] calldata ids;
+        uint256[] calldata amounts;
+        bytes calldata data;
 
-		ERC1155(erc1155).safeBatchTransferFrom(address(this), to, ids, amounts, data);
+        assembly {            
+            erc1155 := shr(96, calldataload(0))
+            
+            to := shr(96, calldataload(add(0, 0x20)))
+            
+            let idsOffset := calldataload(add(0, 0x40))
+            let idsStart := add(0, idsOffset)
+            let idsLength := calldataload(idsStart)
+            ids.offset := add(idsStart, 0x20)
+            ids.length := idsLength
+            
+            let amountsOffset := calldataload(add(0, 0x60))
+            let amountsStart := add(0, amountsOffset)
+            let amountsLength := calldataload(amountsStart)
+            amounts.offset := add(amountsStart, 0x20)
+            amounts.length := amountsLength
 
-		return (
-			zero(),
-			getOperations(erc1155, ids, amounts),
-			zero(),
-			zero()
-		);
-	}
+            let dataOffset := calldataload(add(0, 0x80))
+            let dataStart := add(0, dataOffset)
+            let dataLength := calldataload(dataStart)
+            data.offset := add(dataStart, 0x20)
+            data.length := dataLength
+        }
+
+        ERC1155(erc1155).safeBatchTransferFrom(address(this), to, ids, amounts, data);
+
+        return (
+            zero(),
+            getOperations(erc1155, ids, amounts),
+            zero(),
+            zero()
+        );
+    }
 }
