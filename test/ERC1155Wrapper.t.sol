@@ -51,15 +51,4 @@ contract ERC1155Wrapper_Gas is Test {
 		assertEq(amounts, amountsNew);
 		assertEq(data, dataNew);
 	}
-    
-    // function _getEncodedActionData(
-	// 	address erc1155,
-	// 	uint256 to,
-	// 	uint256[] memory ids,
-	// 	uint256[] memory amounts,
-    //     bytes memory data
-    // ) internal pure returns(bytes memory) {
-    //     bytes memory encodedData = abi.encode(erc1155, to, ids, amounts, data);
-    //     return encodedData;
-    // }
 }

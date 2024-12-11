@@ -47,11 +47,11 @@ contract Mock_ERC1155Blueprint is BasicBlueprint, ERC1155TokenReceiver {
         }
     }
 	function executeActionOld(bytes calldata action) external pure returns (
-            address erc1155,
-            address to,
-            uint256[] memory ids,
-            uint256[] memory amounts,
-            bytes memory data
+        address erc1155,
+        address to,
+        uint256[] memory ids,
+        uint256[] memory amounts,
+        bytes memory data
 	) {
 		(erc1155, to, ids, amounts, data) =
 			abi.decode(action, (address, address, uint256[], uint256[], bytes));
