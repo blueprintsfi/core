@@ -18,7 +18,7 @@ contract ERC1155Wrapper_Gas is Test {
 		vm.deal(address(this), type(uint).max);
 	}
 
-	function test_arrayDecodeNewAccuration() public {
+	function test_arrayDecodeWithAssemblyAndCallData() public {
 		(
             address erc1155,
             address to,
