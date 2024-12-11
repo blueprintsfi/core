@@ -3,21 +3,10 @@ pragma solidity 0.8.27;
 
 import {Test, console2} from "forge-std/Test.sol";
 import {BlueprintManager} from "../src/BlueprintManager.sol";
-// import {BasicBlueprint, TokenOp, IBlueprintManager} from "../BasicBlueprint.sol";
-// import {NativeBlueprint} from "../src/blueprints/wrappers/NativeBlueprint.sol";
-// import {ERC20Blueprint} from "../src/blueprints/wrappers/ERC20Blueprint.sol";
-// import {VestingBlueprint, IVestingSchedule} from "../src/blueprints/vesting/VestingBlueprint.sol";
-// import {BasketBlueprint} from "../src/blueprints/BasketBlueprint.sol";
-// import {ERC20 as ERC20Abstract} from "solmate/tokens/ERC20.sol";
-
-// import {LinearCliffVestingSchedule} from "../src/blueprints/vesting/schedules/LinearCliffVestingSchedule.sol";
-
-// import {BasicBlueprint, IBlueprintManager, IBlueprint} from "../src/blueprints/BasicBlueprint.sol";
-// import {gcd} from "../src/libraries/Math.sol";
 
 import "forge-std/console.sol"; 
 
-import {Mock_ERC1155Blueprint} from "../src/blueprints/mock/Mock_ERC1155Blueprint.sol";
+import {Mock_ERC1155Blueprint} from "./mock/Mock_ERC1155Blueprint.sol";
 
 contract ERC1155Wrapper_Gas is Test {
 	error NoFlashAccountingActive();
