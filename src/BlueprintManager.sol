@@ -81,7 +81,7 @@ contract BlueprintManager is IBlueprintManager, FlashAccounting {
 		uint256 id,
 		uint256 amount
 	) public virtual returns (bool) {
-		allowance[msg.sender][spender][id] = amount;
+		_approve(msg.sender, spender, id, amount);
 
 		return true;
 	}
@@ -90,7 +90,7 @@ contract BlueprintManager is IBlueprintManager, FlashAccounting {
 		address operator,
 		bool approved
 	) public virtual returns (bool) {
-		isOperator[msg.sender][operator] = approved;
+		_setOperator(msg.sender, operator, approved);
 
 		return true;
 	}
@@ -113,6 +113,21 @@ contract BlueprintManager is IBlueprintManager, FlashAccounting {
 			_flashCook(calls[k], session);
 	}
 
+	function _setOperator(
+		address owner,
+		address operator,
+		bool approved
+	) internal virtual {
+		isOperator[owner][operator] = approved;
+	}
+	function _approve(
+		address owner,
+		address spender,
+		uint256 tokenId,
+		uint256 amount
+	) internal virtual {
+		allowance[owner][spender][tokenId] = amount;
+	}
 	function _executeAction(
 		BlueprintCall calldata call
 	) internal returns (
