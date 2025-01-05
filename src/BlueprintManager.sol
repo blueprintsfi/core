@@ -11,10 +11,14 @@ import {
 	FlashUserSession,
 	UserClue
 } from "./FlashAccounting.sol";
+import { ECDSA } from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 contract BlueprintManager is IBlueprintManager, FlashAccounting {
+    using ECDSA for bytes32;
+
 	error InvalidChecksum();
 	error AccessDenied();
+    error InvalidSignature();
 
 	/// @notice eip-6909 operator mapping
 	mapping(address => mapping(address => bool)) public isOperator;
@@ -22,6 +26,28 @@ contract BlueprintManager is IBlueprintManager, FlashAccounting {
 	mapping(address => mapping(uint256 => uint256)) public balanceOf;
 	/// @notice eip-6909 allowance mapping
 	mapping(address => mapping(address => mapping(uint256 => uint256))) public allowance;
+	/// @notice Nonce tracking for permit functions
+    mapping(address => uint256) public nonces;
+
+    bytes32 public constant PERMIT_TYPEHASH = keccak256("Permit(address owner,address spender,uint256 tokenId,uint256 amount,uint256 nonce,uint256 deadline)");
+    bytes32 public constant OPERATOR_PERMIT_TYPEHASH = keccak256("PermitOperator(address owner,address operator,bool approved,uint256 nonce,uint256 deadline)");
+    bytes32 public immutable DOMAIN_SEPARATOR;
+
+    constructor() {
+        uint256 chainId;
+        assembly {
+            chainId := chainid()
+        }
+        DOMAIN_SEPARATOR = keccak256(
+            abi.encode(
+                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                keccak256(bytes("BlueprintManager")),
+                keccak256(bytes("1")),
+                chainId,
+                address(this)
+            )
+        );
+    }
 
 	function _mint(address to, uint256 id, uint256 amount) internal override {
 		balanceOf[to][id] += amount;
@@ -81,7 +107,7 @@ contract BlueprintManager is IBlueprintManager, FlashAccounting {
 		uint256 id,
 		uint256 amount
 	) public virtual returns (bool) {
-		allowance[msg.sender][spender][id] = amount;
+		_approve(msg.sender, spender, id, amount);
 
 		return true;
 	}
@@ -90,7 +116,7 @@ contract BlueprintManager is IBlueprintManager, FlashAccounting {
 		address operator,
 		bool approved
 	) public virtual returns (bool) {
-		isOperator[msg.sender][operator] = approved;
+		_setOperator(msg.sender, operator, approved);
 
 		return true;
 	}
@@ -113,6 +139,21 @@ contract BlueprintManager is IBlueprintManager, FlashAccounting {
 			_flashCook(calls[k], session);
 	}
 
+	function _setOperator(
+		address owner,
+		address operator,
+		bool approved
+	) internal virtual {
+		isOperator[owner][operator] = approved;
+	}
+	function _approve(
+		address owner,
+		address spender,
+		uint256 tokenId,
+		uint256 amount
+	) internal virtual {
+		allowance[owner][spender][tokenId] = amount;
+	}
 	function _executeAction(
 		BlueprintCall calldata call
 	) internal returns (
@@ -228,6 +269,62 @@ contract BlueprintManager is IBlueprintManager, FlashAccounting {
 		}
 		saveUserClue(userSession, userClue);
 	}
+
+    function permit(
+        address owner,
+        address spender,
+        uint256 tokenId,
+        uint256 amount,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external {
+        require(block.timestamp <= deadline, "Permit expired");
+        bytes32 structHash = keccak256(
+            abi.encode(
+                PERMIT_TYPEHASH,
+                owner,
+                spender,
+                tokenId,
+                amount,
+                nonces[owner]++,
+                deadline
+            )
+        );
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", DOMAIN_SEPARATOR, structHash));
+        address signer = digest.recover(v, r, s);
+        if (signer != owner) revert InvalidSignature();
+		
+		_approve(owner, spender, tokenId, amount);
+    }
+
+    function permitOperator(
+        address owner,
+        address operator,
+        bool approved,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external {
+        require(block.timestamp <= deadline, "Permit expired");
+        bytes32 structHash = keccak256(
+            abi.encode(
+                OPERATOR_PERMIT_TYPEHASH,
+                owner,
+                operator,
+                approved,
+                nonces[owner]++,
+                deadline
+            )
+        );
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", DOMAIN_SEPARATOR, structHash));
+        address signer = digest.recover(v, r, s);
+        if (signer != owner) revert InvalidSignature();
+
+		_setOperator(owner, operator, approved);
+    }
 
 	// todo: is this function useful at all?
 	function debit(uint256 id, uint256 amount) external {
