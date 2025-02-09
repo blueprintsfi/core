@@ -5,93 +5,102 @@ import {BasicBlueprint, TokenOp, IBlueprintManager} from "../BasicBlueprint.sol"
 import {gcd} from "../../libraries/Math.sol";
 
 contract SimpleOptionBlueprint is BasicBlueprint {
-	mapping (uint256 baseId => uint256 count) public reserves;
+    mapping(uint256 baseId => uint256 count) public reserves;
 
-	constructor(IBlueprintManager manager) BasicBlueprint(manager) {}
+    constructor(IBlueprintManager manager) BasicBlueprint(manager) {}
 
-	function executeAction(bytes calldata action) external onlyManager returns (
-		TokenOp[] memory /*mint*/,
-		TokenOp[] memory /*burn*/,
-		TokenOp[] memory /*give*/,
-		TokenOp[] memory /*take*/
-	) {
-		(
-			uint256 token0,
-			uint256 token1,
-			uint256 num,
-			uint256 denom,
-			uint256 expiry,
-			uint256 settlement,
-			address settler,
-			bool mint
-		) = abi.decode(
-			action,
-			(uint256, uint256, uint256, uint256, uint256, uint256, address, bool)
-		);
+    struct ActionParams {
+        uint256 token0;
+        uint256 token1;
+        uint256 num;
+        uint256 denom;
+        uint256 expiry;
+        uint256 settlement;
+        address settler;
+        bool isCreating;
+    }
 
-		TokenOp[] memory giveTake = oneOperationArray(token0, num);
+    struct TokenIds {
+        uint256 short;
+        uint256 long;
+        uint256 amount;
+    }
 
-		(uint256 short, uint256 long, uint256 amount) =
-			getTokens(token0, token1, num, denom, expiry, settlement, settler);
+    function executeAction(bytes calldata action)
+        external
+        onlyManager
+        returns (
+            TokenOp[] memory tokensToMint,
+            TokenOp[] memory tokensToBurn,
+            TokenOp[] memory tokensToGive,
+            TokenOp[] memory tokensToTake
+        )
+    {
+        ActionParams memory params = abi.decode(action, (ActionParams));
 
-		TokenOp[] memory mintBurn = new TokenOp[](2);
-		mintBurn[0] = TokenOp(short, amount);
-		mintBurn[1] = TokenOp(long, amount);
+        tokensToGive = params.isCreating ? oneOperationArray(params.token0, params.num) : zero();
+        tokensToTake = params.isCreating ? zero() : oneOperationArray(params.token0, params.num);
 
-		if (mint)
-			reserves[long] += amount;
-		else // underflow check prevents from going beyond reserves
-			reserves[long] -= amount;
+        TokenIds memory ids = getTokens(
+            params.token0, params.token1, params.num, params.denom, params.expiry, params.settlement, params.settler
+        );
 
-		return mint ?
-			(mintBurn, zero(), zero(), giveTake) :
-			(zero(), mintBurn, giveTake, zero());
-	}
+        TokenOp[] memory ops = new TokenOp[](2);
+        ops[0] = TokenOp(ids.short, ids.amount);
+        ops[1] = TokenOp(ids.long, ids.amount);
 
-	function mint(
-		address to,
-		uint256 token0,
-		uint256 token1,
-		uint256 num,
-		uint256 denom,
-		uint256 expiry,
-		uint256 settlement,
-		address settler
-	) external {
-		if (block.timestamp <= expiry || (block.timestamp <= settlement && msg.sender != settler))
-			revert AccessDenied();
+        if (params.isCreating) {
+            reserves[ids.long] += ids.amount;
+            tokensToMint = ops;
+            tokensToBurn = zero();
+        } else {
+            reserves[ids.long] -= ids.amount;
+            tokensToMint = zero();
+            tokensToBurn = ops;
+        }
+    }
 
-		(,uint256 long, uint256 amount) =
-			getTokens(token0, token1, num, denom, expiry, settlement, settler);
+    function mint(
+        address to,
+        uint256 token0,
+        uint256 token1,
+        uint256 num,
+        uint256 denom,
+        uint256 expiry,
+        uint256 settlement,
+        address settler
+    ) external {
+        if (block.timestamp <= expiry || (block.timestamp <= settlement && msg.sender != settler)) {
+            revert AccessDenied();
+        }
 
-		blueprintManager.mint(to, long, amount);
-	}
+        TokenIds memory ids = getTokens(token0, token1, num, denom, expiry, settlement, settler);
+        blueprintManager.mint(to, ids.long, ids.amount);
+    }
 
-	function getTokens(
-		uint256 token0,
-		uint256 token1,
-		uint256 num,
-		uint256 denom,
-		uint256 expiry,
-		uint256 settlement,
-		address settler
-	) internal pure returns (uint256 short, uint256 long, uint256 amount) {
-		amount = gcd(num, denom);
-		(num, denom) = (num / amount, denom / amount);
+    function getTokens(
+        uint256 token0,
+        uint256 token1,
+        uint256 num,
+        uint256 denom,
+        uint256 expiry,
+        uint256 settlement,
+        address settler
+    ) internal pure returns (TokenIds memory ids) {
+        ids.amount = gcd(num, denom);
+        (num, denom) = (num / ids.amount, denom / ids.amount);
 
-		bool swap = token0 < token1;
-		if (swap) {
-			(token0, token1) = (token1, token0);
-			(num, denom) = (denom, num);
-		}
+        bool swap = token0 < token1;
+        if (swap) {
+            (token0, token1) = (token1, token0);
+            (num, denom) = (denom, num);
+        }
 
-		uint256 id = uint256(keccak256(
-			abi.encodePacked(token0, token1, num, denom, expiry, settlement, settler)
-		));
+        uint256 id = uint256(keccak256(abi.encodePacked(token0, token1, num, denom, expiry, settlement, settler)));
 
-		unchecked {
-			short = id + 2;
-			long = id + (swap ? 1 : 0);
-		}
-	}
+        unchecked {
+            ids.short = id + 2;
+            ids.long = id + (swap ? 1 : 0);
+        }
+    }
 }
