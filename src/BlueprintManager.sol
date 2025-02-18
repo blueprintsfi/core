@@ -12,7 +12,7 @@ import {
 	UserClue
 } from "./FlashAccounting.sol";
 
-contract BlueprintManager is IBlueprintManager, FlashAccounting {
+contract BlueprintManager is FlashAccounting, IBlueprintManager {
 	error InvalidChecksum();
 	error AccessDenied();
 
@@ -31,12 +31,7 @@ contract BlueprintManager is IBlueprintManager, FlashAccounting {
 		balanceOf[from][id] -= amount;
 	}
 
-	function _transferFrom(
-		address from,
-		address to,
-		uint256 id,
-		uint256 amount
-	) internal {
+	function _transferFrom(address from, address to, uint256 id, uint256 amount) internal {
 		_burn(from, id, amount);
 		_mint(to, id, amount);
 	}
@@ -52,20 +47,13 @@ contract BlueprintManager is IBlueprintManager, FlashAccounting {
 	 * @dev reverts on failure
 	 * @return is always true if didn't revert
 	 */
-	function transfer(
-		address receiver,
-		uint256 id,
-		uint256 amount
-	) public returns (bool) {
+	function transfer(address receiver, uint256 id, uint256 amount) public returns (bool) {
 		_transferFrom(msg.sender, receiver, id, amount);
 
 		return true;
 	}
 
-	function transfer(
-		address to,
-		TokenOp[] calldata ops
-	) public returns (bool) {
+	function transfer(address to, TokenOp[] calldata ops) public returns (bool) {
 		for (uint256 i = 0; i < ops.length; i++) {
 			TokenOp calldata op = ops[i];
 			(uint256 id, uint256 amount) = (op.tokenId, op.amount);
@@ -88,11 +76,7 @@ contract BlueprintManager is IBlueprintManager, FlashAccounting {
 		return true;
 	}
 
-	function transferFrom(
-		address from,
-		address to,
-		TokenOp[] calldata ops
-	) public returns (bool) {
+	function transferFrom(address from, address to, TokenOp[] calldata ops) public returns (bool) {
 		bool check = msg.sender == from;
 		if (!check)
 			check = !isOperator[from][msg.sender];
@@ -108,20 +92,13 @@ contract BlueprintManager is IBlueprintManager, FlashAccounting {
 		return true;
 	}
 
-	function approve(
-		address spender,
-		uint256 id,
-		uint256 amount
-	) public returns (bool) {
+	function approve(address spender, uint256 id, uint256 amount) public returns (bool) {
 		allowance[msg.sender][spender][id] = amount;
 
 		return true;
 	}
 
-	function setOperator(
-		address operator,
-		bool approved
-	) public returns (bool) {
+	function setOperator(address operator, bool approved) public returns (bool) {
 		isOperator[msg.sender][operator] = approved;
 
 		return true;
@@ -145,9 +122,7 @@ contract BlueprintManager is IBlueprintManager, FlashAccounting {
 			_flashCook(calls[k], session);
 	}
 
-	function _executeAction(
-		BlueprintCall calldata call
-	) internal returns (
+	function _executeAction(BlueprintCall calldata call) internal returns (
 		TokenOp[] memory mint,
 		TokenOp[] memory burn,
 		TokenOp[] memory give,
