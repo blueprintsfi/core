@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {FlashAccountingLib} from "./libraries/FlashAccountingLib.sol";
+import {HashLib} from "./libraries/HashLib.sol";
 import {IFlashAccounting} from "./interfaces/IFlashAccounting.sol";
 
 // keccak256(MainClue | 0)
@@ -80,15 +81,8 @@ abstract contract FlashAccounting is IFlashAccounting {
 		}
 	}
 
-	function getUserSession(FlashSession session, address user) internal pure returns (
-		FlashUserSession userSession
-	) {
-		assembly ("memory-safe") {
-			mstore(0, user)
-			mstore(0x20, session)
-
-			userSession := keccak256(12, 52)
-		}
+	function getUserSession(FlashSession session, address user) internal pure returns (FlashUserSession) {
+		return FlashUserSession.wrap(HashLib.hash(user, FlashSession.unwrap(session)));
 	}
 
 	function getUserClue(FlashUserSession userSession) internal view returns (UserClue userClue) {
@@ -129,14 +123,7 @@ abstract contract FlashAccounting is IFlashAccounting {
 		uint256 id,
 		uint256 amount
 	) internal returns (UserClue) {
-		uint256 deltaSlot;
-		assembly ("memory-safe") {
-			mstore(0, id)
-			mstore(0x20, userSession)
-
-			deltaSlot := keccak256(0, 0x40)
-		}
-
+		uint256 deltaSlot = HashLib.hash(id, FlashUserSession.unwrap(userSession));
 		int256 deltaVal = FlashAccountingLib.addFlashValue(deltaSlot, amount);
 
 		assembly ("memory-safe") {
@@ -164,14 +151,7 @@ abstract contract FlashAccounting is IFlashAccounting {
 		uint256 id,
 		uint256 amount
 	) internal returns (UserClue) {
-		uint256 deltaSlot;
-		assembly ("memory-safe") {
-			mstore(0, id)
-			mstore(0x20, userSession)
-
-			deltaSlot := keccak256(0, 0x40)
-		}
-
+		uint256 deltaSlot = HashLib.hash(id, FlashUserSession.unwrap(userSession));
 		int256 deltaVal = FlashAccountingLib.subtractFlashValue(deltaSlot, amount);
 
 		assembly ("memory-safe") {
@@ -198,17 +178,12 @@ abstract contract FlashAccounting is IFlashAccounting {
 
 		for (uint256 i = 0; i < UserClue.unwrap(userClue);) {
 			uint256 id;
-			uint256 deltaSlot;
-
 			assembly ("memory-safe") {
 				i := add(1, i)
 				id := tload(add(userSession, i))
-
-				mstore(0, id)
-				mstore(0x20, userSession)
-				deltaSlot := keccak256(0, 0x40)
 			}
 
+			uint256 deltaSlot = HashLib.hash(id, FlashUserSession.unwrap(userSession));
 			(uint256 positive, uint256 negative) =
 				FlashAccountingLib.readAndNullifyFlashValue(deltaSlot);
 

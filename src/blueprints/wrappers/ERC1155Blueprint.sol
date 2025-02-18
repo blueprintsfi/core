@@ -15,7 +15,7 @@ contract ERC1155Blueprint is BasicBlueprint, ERC1155TokenReceiver {
 	) internal pure returns (TokenOp[] memory ops) {
 		ops = new TokenOp[](ids.length);
 		for (uint256 i = 0; i < ids.length; i++)
-			ops[i] = TokenOp(HashLib.getTokenId(erc1155, ids[i]), amounts[i]);
+			ops[i] = TokenOp(HashLib.hash(erc1155, ids[i]), amounts[i]);
 	}
 
 	function onERC1155Received(
@@ -30,9 +30,7 @@ contract ERC1155Blueprint is BasicBlueprint, ERC1155TokenReceiver {
 		if (data.length != 0)
 			to = abi.decode(data, (address));
 
-		// getTokenId is used to simply hash address and uint256,
-		// not to be confused to be getting the blueprint manager's id
-		blueprintManager.mint(to, HashLib.getTokenId(msg.sender, id), amount);
+		blueprintManager.mint(to, HashLib.hash(msg.sender, id), amount);
 
 		return ERC1155TokenReceiver.onERC1155Received.selector;
 	}

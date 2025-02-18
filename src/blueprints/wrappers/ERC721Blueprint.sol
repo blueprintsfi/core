@@ -19,9 +19,7 @@ contract ERC721Blueprint is BasicBlueprint, ERC721TokenReceiver {
 		if (data.length != 0)
 			to = abi.decode(data, (address));
 
-		// getTokenId is used to simply hash address and uint256,
-		// not to be confused to be getting the blueprint manager's id
-		blueprintManager.mint(to, HashLib.getTokenId(msg.sender, tokenId), 1);
+		blueprintManager.mint(to, HashLib.hash(msg.sender, tokenId), 1);
 
 		return ERC721TokenReceiver.onERC721Received.selector;
 	}
@@ -39,7 +37,7 @@ contract ERC721Blueprint is BasicBlueprint, ERC721TokenReceiver {
 
 		return (
 			zero(),
-			oneOperationArray(HashLib.getTokenId(erc721, id), 1),
+			oneOperationArray(HashLib.hash(erc721, id), 1),
 			zero(),
 			zero()
 		);

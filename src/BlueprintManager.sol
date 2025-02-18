@@ -166,13 +166,13 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 			senderClue = addUserCreditWithClue(
 				senderSession,
 				senderClue,
-				HashLib.getTokenId(blueprint, mint[i].tokenId),
+				HashLib.hash(blueprint, mint[i].tokenId),
 				mint[i].amount
 			);
 		}
 
 		for (uint256 i = 0; i < burn.length; i++) {
-			uint256 tokenId = HashLib.getTokenId(blueprint, burn[i].tokenId);
+			uint256 tokenId = HashLib.hash(blueprint, burn[i].tokenId);
 			uint256 amount = burn[i].amount;
 
 			if (checkApprovals)
@@ -268,24 +268,24 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 	}
 
 	function mint(address to, uint256 tokenId, uint256 amount) external {
-		_mint(to, HashLib.getTokenId(msg.sender, tokenId), amount);
+		_mint(to, HashLib.hash(msg.sender, tokenId), amount);
 	}
 
 	function mint(address to, TokenOp[] calldata ops) external {
 		uint256 len = ops.length;
 
 		for (uint256 i = 0; i < len; i++)
-			_mint(to, HashLib.getTokenId(msg.sender, ops[i].tokenId), ops[i].amount);
+			_mint(to, HashLib.hash(msg.sender, ops[i].tokenId), ops[i].amount);
 	}
 
 	function burn(uint256 tokenId, uint256 amount) external {
-		_burn(msg.sender, HashLib.getTokenId(msg.sender, tokenId), amount);
+		_burn(msg.sender, HashLib.hash(msg.sender, tokenId), amount);
 	}
 
 	function burn(TokenOp[] calldata ops) external {
 		uint256 len = ops.length;
 
 		for (uint256 i = 0; i < len; i++)
-			_burn(msg.sender, HashLib.getTokenId(msg.sender, ops[i].tokenId), ops[i].amount);
+			_burn(msg.sender, HashLib.hash(msg.sender, ops[i].tokenId), ops[i].amount);
 	}
 }

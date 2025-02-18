@@ -40,7 +40,7 @@ contract BlueprintManagerTest is Test {
 	}
 
 	function test_wrapNative(address to, uint256 amount) public returns (uint256 id) {
-		id = HashLib.getTokenId(address(native), 0);
+		id = HashLib.hash(address(native), 0);
 		uint256 balance = manager.balanceOf(to, id);
 
 		vm.assume(amount < address(this).balance);
@@ -125,7 +125,7 @@ contract BlueprintManagerTest is Test {
 		if (unclaimed == 0)
 			return (0, 0);
 		count = gcd(total, unclaimed);
-		tokenId = HashLib.getTokenId(
+		tokenId = HashLib.hash(
 			address(vesting),
 			uint256(keccak256(abi.encodePacked(
 				id,
@@ -313,7 +313,7 @@ contract BlueprintManagerTest is Test {
 	function test_erc20Wrap(address from, address to, uint256 amount) public returns (uint256 id) {
 		vm.assume(amount != type(uint256).max);
 		vm.assume(from != address(erc20wrapper));
-		id = HashLib.getTokenId(address(erc20wrapper), uint256(uint160(address(erc20))));
+		id = HashLib.hash(address(erc20wrapper), uint256(uint160(address(erc20))));
 		erc20.mint(address(from), amount);
 
 		vm.startPrank(from);
@@ -379,7 +379,7 @@ contract BlueprintManagerTest is Test {
 		for (uint256 i = 0; i < amounts.length; i++)
 			amounts[i] /= outputAmount;
 
-		uint256 id = HashLib.getTokenId(
+		uint256 id = HashLib.hash(
 			address(basket),
 			uint256(keccak256(abi.encodePacked(
 				ids,
@@ -400,7 +400,7 @@ contract BlueprintManagerTest is Test {
 		bool setOperator
 	) public {
 		manager.mint(from, 0, amount);
-		uint256 id = HashLib.getTokenId(address(this), 0);
+		uint256 id = HashLib.hash(address(this), 0);
 
 		vm.startPrank(from);
 		if (setApproval)
