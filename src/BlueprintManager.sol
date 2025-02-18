@@ -56,22 +56,54 @@ contract BlueprintManager is IBlueprintManager, FlashAccounting {
 		address receiver,
 		uint256 id,
 		uint256 amount
-	) public virtual returns (bool) {
+	) public returns (bool) {
 		_transferFrom(msg.sender, receiver, id, amount);
 
 		return true;
 	}
 
+	function transfer(
+		address to,
+		TokenOp[] calldata ops
+	) public returns (bool) {
+		for (uint256 i = 0; i < ops.length; i++) {
+			TokenOp calldata op = ops[i];
+			(uint256 id, uint256 amount) = (op.tokenId, op.amount);
+			_transferFrom(msg.sender, to, id, amount);
+		}
+
+		return true;
+	}
+
 	function transferFrom(
-		address sender,
-		address receiver,
+		address from,
+		address to,
 		uint256 id,
 		uint256 amount
-	) public virtual returns (bool) {
-		if (msg.sender != sender && !isOperator[sender][msg.sender])
-			_decreaseApproval(sender, id, amount);
+	) public returns (bool) {
+		if (msg.sender != from && !isOperator[from][msg.sender])
+			_decreaseApproval(from, id, amount);
+		_transferFrom(from, to, id, amount);
 
-		_transferFrom(sender, receiver, id, amount);
+		return true;
+	}
+
+	function transferFrom(
+		address from,
+		address to,
+		TokenOp[] calldata ops
+	) public returns (bool) {
+		bool check = msg.sender == from;
+		if (!check)
+			check = !isOperator[from][msg.sender];
+
+		for (uint256 i = 0; i < ops.length; i++) {
+			TokenOp calldata op = ops[i];
+			(uint256 id, uint256 amount) = (op.tokenId, op.amount);
+			if (check)
+				_decreaseApproval(from, id, amount);
+			_transferFrom(from, to, id, amount);
+		}
 
 		return true;
 	}
@@ -80,7 +112,7 @@ contract BlueprintManager is IBlueprintManager, FlashAccounting {
 		address spender,
 		uint256 id,
 		uint256 amount
-	) public virtual returns (bool) {
+	) public returns (bool) {
 		allowance[msg.sender][spender][id] = amount;
 
 		return true;
@@ -89,7 +121,7 @@ contract BlueprintManager is IBlueprintManager, FlashAccounting {
 	function setOperator(
 		address operator,
 		bool approved
-	) public virtual returns (bool) {
+	) public returns (bool) {
 		isOperator[msg.sender][operator] = approved;
 
 		return true;
