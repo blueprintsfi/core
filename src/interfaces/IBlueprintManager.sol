@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
+import {IFlashAccounting} from "./IFlashAccounting.sol";
+
 struct TokenOp {
 	uint256 tokenId;
 	uint256 amount;
@@ -15,12 +17,13 @@ struct BlueprintCall {
 
 /// @title BlueprintManager's Interface
 /// @author Czar102
-interface IBlueprintManager {
+interface IBlueprintManager is IFlashAccounting {
 	/// @notice executes a series of calls to Blueprints
 	/// @param calls the set of calls to be made
 	/// @dev must either be the party represented in each of these calls,
 	///      or an operator of the calls[i].sender
 	function cook(address realizer, BlueprintCall[] calldata calls) external;
+	function cook(BlueprintCall[] calldata calls) external;
 
 	/// @notice mints single type tokens according to the TokenOp
 	/// @param to the address to mint to
@@ -36,4 +39,20 @@ interface IBlueprintManager {
 	/// @dev keep in mind that burning (inverting this action) is only possible
 	///       via cook invoked by the user or their operator
 	function mint(address to, TokenOp[] calldata ops) external;
+
+	function isOperator(address user, address operator) external returns (bool);
+	function balanceOf(address user, uint256 tokenId) external returns (uint256);
+	function allowance(address user, address allowed, uint256 tokenId) external returns (uint256);
+	function transfer(address receiver, uint256 id, uint256 amount) external returns (bool);
+	function transfer(address to, TokenOp[] calldata ops) external returns (bool);
+	function transferFrom(address from, address to, uint256 id, uint256 amount) external returns (bool);
+	function transferFrom(address from, address to, TokenOp[] calldata ops) external returns (bool);
+	function approve(address spender, uint256 id, uint256 amount) external returns (bool);
+	function setOperator(address operator, bool approved) external returns (bool);
+	function credit(uint256 id, uint256 amount) external;
+	function credit(TokenOp[] calldata ops) external;
+	function debit(uint256 id, uint256 amount) external;
+	function debit(TokenOp[] calldata ops) external;
+	function burn(uint256 tokenId, uint256 amount) external ;
+	function burn(TokenOp[] calldata ops) external;
 }

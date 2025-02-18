@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {FlashAccountingLib} from "./libraries/FlashAccountingLib.sol";
+import {IFlashAccounting} from "./interfaces/IFlashAccounting.sol";
 
 // keccak256(MainClue | 0)
 type FlashSession is uint256;
@@ -17,7 +18,7 @@ type UserClue is uint256;
 uint256 constant _2_POW_254 = 1 << 254;
 uint256 constant _96_BIT_FLAG = (1 << 96) - 1;
 
-abstract contract FlashAccounting {
+abstract contract FlashAccounting is IFlashAccounting {
 	function _mint(address to, uint256 id, uint256 amount) internal virtual;
 	function _burn(address from, uint256 id, uint256 amount) internal virtual;
 
@@ -25,7 +26,7 @@ abstract contract FlashAccounting {
 	error NoFlashAccountingActive();
 	error RealizeAccessDenied();
 
-	function exttload(uint256 slot) external view returns (uint256 value) {
+	function exttload(uint256 slot) public view virtual returns (uint256 value) {
 		assembly ("memory-safe") {
 			value := tload(slot)
 		}
