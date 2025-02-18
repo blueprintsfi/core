@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
 
+import {FlashAccountingLib} from "./libraries/FlashAccountingLib.sol";
+
 // keccak256(MainClue | 0)
 type FlashSession is uint256;
 // keccak256(user | FlashSession)
@@ -29,9 +31,7 @@ abstract contract FlashAccounting {
 		}
 	}
 
-	function getCurrentSession() internal view returns (
-		FlashSession session
-	) {
+	function getCurrentSession() internal view returns (FlashSession session) {
 		address realizer;
 		uint256 mainIndex;
 		assembly ("memory-safe") {
@@ -71,10 +71,7 @@ abstract contract FlashAccounting {
 		}
 	}
 
-	function closeFlashAccounting(
-		MainClue mainClue,
-		FlashSession session
-	) internal {
+	function closeFlashAccounting(MainClue mainClue, FlashSession session) internal {
 		settleSession(session);
 
 		assembly ("memory-safe") {
@@ -82,10 +79,9 @@ abstract contract FlashAccounting {
 		}
 	}
 
-	function getUserSession(
-		FlashSession session,
-		address user
-	) internal pure returns (FlashUserSession userSession) {
+	function getUserSession(FlashSession session, address user) internal pure returns (
+		FlashUserSession userSession
+	) {
 		assembly ("memory-safe") {
 			mstore(0, user)
 			mstore(0x20, session)
@@ -100,10 +96,7 @@ abstract contract FlashAccounting {
 		}
 	}
 
-	function initializeUserSession(
-		FlashSession session,
-		address user
-	) internal returns (
+	function initializeUserSession(FlashSession session, address user) internal returns (
 		FlashUserSession userSession,
 		UserClue userClue
 	) {
@@ -135,52 +128,17 @@ abstract contract FlashAccounting {
 		uint256 id,
 		uint256 amount
 	) internal returns (UserClue) {
+		uint256 deltaSlot;
 		assembly ("memory-safe") {
 			mstore(0, id)
 			mstore(0x20, userSession)
 
-			let deltaSlot := keccak256(0, 0x40)
+			deltaSlot := keccak256(0, 0x40)
+		}
 
-			// Structure: | int255 value | 1 bit extension |
-			let deltaVal := tload(deltaSlot)
+		int256 deltaVal = FlashAccountingLib.addFlashValue(deltaSlot, amount);
 
-			let delta := sar(1, deltaVal)
-			let newDelta := add(delta, amount)
-
-			// we'll have a carry if the addition overflows integers or if the
-			// first two bits are 01, which are out of bounds of int255
-			switch or(slt(newDelta, delta), eq(shr(254, newDelta), 1))
-			case 1 {
-				let preDeltaSlot := add(deltaSlot, 1)
-				// if first bits are 01 or 10, the carry is 1, else 2
-				let carry := sub(2, shr(255, add(newDelta, _2_POW_254)))
-
-				// ignore preDeltaSlot if there is no extension
-				let preDelta := 0
-				if and(deltaVal, 1) {
-					preDelta := tload(preDeltaSlot)
-				}
-				preDelta := add(preDelta, carry)
-
-				tstore(preDeltaSlot, preDelta)
-				tstore(
-					deltaSlot,
-					or(
-						shl(1, newDelta),
-						iszero(iszero(preDelta))
-					)
-				)
-			}
-			default /*case 0*/ {
-				tstore(
-						deltaSlot,
-						or(
-							shl(1, newDelta),
-							and(deltaVal, 1)
-						)
-					)
-			}
-
+		assembly ("memory-safe") {
 			// it means we may need to push the token
 			if iszero(deltaVal) {
 				userClue := add(userClue, 1)
@@ -205,52 +163,17 @@ abstract contract FlashAccounting {
 		uint256 id,
 		uint256 amount
 	) internal returns (UserClue) {
+		uint256 deltaSlot;
 		assembly ("memory-safe") {
 			mstore(0, id)
 			mstore(0x20, userSession)
 
-			let deltaSlot := keccak256(0, 0x40)
+			deltaSlot := keccak256(0, 0x40)
+		}
 
-			// Structure: | int255 value | 1 bit extension |
-			let deltaVal := tload(deltaSlot)
+		int256 deltaVal = FlashAccountingLib.subtractFlashValue(deltaSlot, amount);
 
-			let delta := sar(1, deltaVal)
-			let newDelta := sub(delta, amount)
-
-			// we'll have a carry if the subtraction underflows integers or if
-			// the first two bits are 10, which are out of bounds of int255
-			switch or(slt(delta, newDelta), eq(shr(254, newDelta), 2))
-			case 1 {
-				let preDeltaSlot := add(deltaSlot, 1)
-				// if first bits are 01 or 10, the carry is 1, else 2
-				let carry := sub(2, shr(255, add(newDelta, _2_POW_254)))
-
-				// ignore preDeltaSlot if there is no extension
-				let preDelta := 0
-				if and(deltaVal, 1) {
-					preDelta := tload(preDeltaSlot)
-				}
-				preDelta := sub(preDelta, carry)
-
-				tstore(preDeltaSlot, preDelta)
-				tstore(
-					deltaSlot,
-					or(
-						shl(1, newDelta),
-						iszero(iszero(preDelta))
-					)
-				)
-			}
-			default /*case 0*/ {
-				tstore(
-						deltaSlot,
-						or(
-							shl(1, newDelta),
-							and(deltaVal, 1)
-						)
-					)
-			}
-
+		assembly ("memory-safe") {
 			// it means we may need to push the token
 			if iszero(deltaVal) {
 				userClue := add(userClue, 1)
@@ -274,7 +197,6 @@ abstract contract FlashAccounting {
 
 		for (uint256 i = 0; i < UserClue.unwrap(userClue);) {
 			uint256 id;
-			int256 delta;
 			uint256 deltaSlot;
 
 			assembly ("memory-safe") {
@@ -284,55 +206,15 @@ abstract contract FlashAccounting {
 				mstore(0, id)
 				mstore(0x20, userSession)
 				deltaSlot := keccak256(0, 0x40)
-
-				delta := tload(deltaSlot)
 			}
 
-			if (delta == 0)
-				continue;
+			(uint256 positive, uint256 negative) =
+				FlashAccountingLib.readAndNullifyFlashValue(deltaSlot);
 
-			bool more;
-			assembly ("memory-safe") {
-				more := and(delta, 1)
-				delta := sar(1, delta)
-
-				// optimistically clear the delta; this also clears the
-				// extension since it will be ignored if the delta is read
-				tstore(deltaSlot, 0)
-			}
-
-			unchecked {
-				if (more) {
-					int256 extension;
-					assembly ("memory-safe") {
-						extension := tload(add(deltaSlot, 1))
-					}
-
-					if (extension == -2) {
-						if (delta < 0)
-							revert BalanceDeltaOverflow();
-						// burn 2 ** 256 - uint256(delta) tokens
-						_burn(user, id, uint256(-delta));
-					} else if (extension == -1) {
-						_burn(user, id, uint256(-delta) + (1 << 255));
-					} /* else if (extension == 0) {
-						// in that case !more, so we won't enter this branch
-					} */ else if (extension == 1) {
-						_mint(user, id, uint256(delta) + (1 << 255));
-					} else if (extension == 2) {
-						if (delta >= 0)
-							revert BalanceDeltaOverflow();
-						// mint 2 ** 256 + delta tokens (delta is negative)
-						_mint(user, id, uint256(delta));
-					} else
-						revert BalanceDeltaOverflow();
-				} else {
-					if (delta < 0)
-						_burn(user, id, uint256(-delta));
-					else
-						_mint(user, id, uint256(delta));
-				}
-			}
+			if (positive != 0)
+				_mint(user, id, positive);
+			else if (negative != 0)
+				_burn(user, id, negative);
 		}
 
 		assembly ("memory-safe") {
@@ -341,9 +223,7 @@ abstract contract FlashAccounting {
 		}
 	}
 
-	function settleSession(
-		FlashSession session
-	) private {
+	function settleSession(FlashSession session) private {
 		SessionClue sessionClue;
 		assembly ("memory-safe") {
 			sessionClue := tload(session)
