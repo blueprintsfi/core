@@ -19,21 +19,37 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 	/// @notice eip-6909 operator mapping
 	mapping(address => mapping(address => bool)) public isOperator;
 	/// @notice eip-6909 balance mapping
-	mapping(address => mapping(uint256 => uint256)) public balanceOf;
+	mapping(address => mapping(uint256 => uint256)) private _balanceOf;
 	/// @notice eip-6909 allowance mapping
 	mapping(address => mapping(address => mapping(uint256 => uint256))) public allowance;
 
+	function balanceOf(address user, uint256 subaccount, uint256 tokenId) public returns (uint256) {
+		return _balanceOf[user][HashLib.hash(tokenId, subaccount)];
+	}
+
+	function balanceOf(address user, uint256 tokenId) public returns (uint256 balance) {
+		return balanceOf(user, 0, tokenId);
+	}
+
 	function _mint(address to, uint256 id, uint256 amount) internal override {
-		balanceOf[to][id] += amount;
+		_balanceOf[to][id] += amount;
 	}
 
 	function _burn(address from, uint256 id, uint256 amount) internal override {
-		balanceOf[from][id] -= amount;
+		_balanceOf[from][id] -= amount;
+	}
+
+	function _mintZeroSubaccount(address to, uint256 id, uint256 amount) internal {
+		_mint(to, HashLib.hash(id, 0), amount);
+	}
+
+	function _burnZeroSubaccount(address from, uint256 id, uint256 amount) internal {
+		_burn(from, HashLib.hash(id, 0), amount);
 	}
 
 	function _transferFrom(address from, address to, uint256 id, uint256 amount) internal {
-		_burn(from, id, amount);
-		_mint(to, id, amount);
+		_burnZeroSubaccount(from, id, amount);
+		_mintZeroSubaccount(to, id, amount);
 	}
 
 	function _decreaseApproval(address sender, uint256 id, uint256 amount) internal {
@@ -42,11 +58,6 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 			allowance[sender][msg.sender][id] = allowed - amount;
 	}
 
-	/**
-	 * @notice transfers `amount` of token `id` to `receiver`
-	 * @dev reverts on failure
-	 * @return is always true if didn't revert
-	 */
 	function transfer(address receiver, uint256 id, uint256 amount) public returns (bool) {
 		_transferFrom(msg.sender, receiver, id, amount);
 
@@ -166,7 +177,7 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 			senderClue = addUserCreditWithClue(
 				senderSession,
 				senderClue,
-				HashLib.hash(blueprint, mint[i].tokenId),
+				HashLib.hash(HashLib.hash(blueprint, mint[i].tokenId), 0),
 				mint[i].amount
 			);
 		}
@@ -178,7 +189,7 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 			if (checkApprovals)
 				_decreaseApproval(sender, tokenId, amount);
 
-			senderClue = addUserDebitWithClue(senderSession, senderClue, tokenId, amount);
+			senderClue = addUserDebitWithClue(senderSession, senderClue, HashLib.hash(tokenId, 0), amount);
 		}
 
 		if (blueprint != sender && (give.length != 0 || take.length != 0)) {
@@ -186,7 +197,7 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 				initializeUserSession(session, blueprint);
 
 			for (uint256 i = 0; i < give.length; i++) {
-				uint256 id = give[i].tokenId;
+				uint256 id = HashLib.hash(give[i].tokenId, 0);
 				uint256 amount = give[i].amount;
 				senderClue = addUserCreditWithClue(senderSession, senderClue, id, amount);
 				blueprintClue = addUserDebitWithClue(blueprintSession, blueprintClue, id, amount);
@@ -199,6 +210,7 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 				if (checkApprovals)
 					_decreaseApproval(sender, id, amount);
 
+				id = HashLib.hash(id, 0);
 				senderClue = addUserDebitWithClue(senderSession, senderClue, id, amount);
 				blueprintClue = addUserCreditWithClue(blueprintSession, blueprintClue, id, amount);
 			}
@@ -213,10 +225,10 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 		(FlashUserSession userSession, UserClue userClue) =
 			initializeUserSession(session, msg.sender);
 
-		UserClue newUserClue = addUserDebitWithClue(userSession, userClue, id, amount);
+		UserClue newUserClue = addUserDebitWithClue(userSession, userClue, HashLib.hash(id, 0), amount);
 		if (UserClue.unwrap(userClue) != UserClue.unwrap(newUserClue))
 			saveUserClue(userSession, newUserClue);
-		_mint(msg.sender, id, amount);
+		_mintZeroSubaccount(msg.sender, id, amount);
 	}
 
 	function credit(TokenOp[] calldata ops) external {
@@ -230,8 +242,8 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 			TokenOp calldata op = ops[i];
 			uint256 id = op.tokenId;
 			uint256 amount = op.amount;
-			userClue = addUserDebitWithClue(userSession, userClue, id, amount);
-			_mint(msg.sender, id, amount);
+			userClue = addUserDebitWithClue(userSession, userClue, HashLib.hash(id, 0), amount);
+			_mintZeroSubaccount(msg.sender, id, amount);
 		}
 		saveUserClue(userSession, userClue);
 	}
@@ -261,31 +273,31 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 			TokenOp calldata op = ops[i];
 			uint256 id = op.tokenId;
 			uint256 amount = op.amount;
-			userClue = addUserCreditWithClue(userSession, userClue, id, amount);
-			_burn(msg.sender, id, amount);
+			userClue = addUserCreditWithClue(userSession, userClue, HashLib.hash(id, 0), amount);
+			_burnZeroSubaccount(msg.sender, id, amount);
 		}
 		saveUserClue(userSession, userClue);
 	}
 
 	function mint(address to, uint256 tokenId, uint256 amount) external {
-		_mint(to, HashLib.hash(msg.sender, tokenId), amount);
+		_mintZeroSubaccount(to, HashLib.hash(msg.sender, tokenId), amount);
 	}
 
 	function mint(address to, TokenOp[] calldata ops) external {
 		uint256 len = ops.length;
 
 		for (uint256 i = 0; i < len; i++)
-			_mint(to, HashLib.hash(msg.sender, ops[i].tokenId), ops[i].amount);
+			_mintZeroSubaccount(to, HashLib.hash(msg.sender, ops[i].tokenId), ops[i].amount);
 	}
 
 	function burn(uint256 tokenId, uint256 amount) external {
-		_burn(msg.sender, HashLib.hash(msg.sender, tokenId), amount);
+		_burnZeroSubaccount(msg.sender, HashLib.hash(msg.sender, tokenId), amount);
 	}
 
 	function burn(TokenOp[] calldata ops) external {
 		uint256 len = ops.length;
 
 		for (uint256 i = 0; i < len; i++)
-			_burn(msg.sender, HashLib.hash(msg.sender, ops[i].tokenId), ops[i].amount);
+			_burnZeroSubaccount(msg.sender, HashLib.hash(msg.sender, ops[i].tokenId), ops[i].amount);
 	}
 }
