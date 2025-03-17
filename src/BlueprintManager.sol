@@ -52,6 +52,81 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 		_mintZeroSubaccount(to, id, amount);
 	}
 
+	function transferFrom(
+		address from,
+		uint256 fromSubaccount,
+		address to,
+		uint256 toSubaccount,
+		TokenOp[] calldata ops
+	) public returns (bool) {
+		bool check = msg.sender == from;
+		if (!check)
+			check = !isOperator[from][msg.sender];
+
+		for (uint256 i = 0; i < ops.length; i++) {
+			TokenOp calldata op = ops[i];
+			(uint256 id, uint256 amount) = (op.tokenId, op.amount);
+			if (check)
+				_decreaseApproval(from, id, amount);
+			_burn(from, HashLib.hash(id, fromSubaccount), amount);
+			_mint(to, HashLib.hash(id, toSubaccount), amount);
+		}
+
+		return true;
+	}
+
+	function flashTransferFrom(
+		address from,
+		uint256 fromSubaccount,
+		address to,
+		uint256 toSubaccount,
+		TokenOp[] calldata ops
+	) public returns (bool) {
+		bool check = msg.sender == from;
+		if (!check)
+			check = !isOperator[from][msg.sender];
+
+		FlashSession session = getCurrentSession();
+		(FlashUserSession fromSession, UserClue fromClue) =
+			initializeUserSession(session, from);
+
+		// can't cache two clues for the same user, so we have to consider cases
+		if (from != to) {
+			(FlashUserSession toSession, UserClue toClue) =
+				initializeUserSession(session, to);
+
+			for (uint256 i = 0; i < ops.length; i++) {
+				TokenOp calldata op = ops[i];
+				(uint256 id, uint256 amount) = (op.tokenId, op.amount);
+				if (check)
+					_decreaseApproval(from, id, amount);
+
+				uint256 fromId = HashLib.hash(id, fromSubaccount);
+				fromClue = addUserDebitWithClue(fromSession, fromClue, fromId, amount);
+
+				uint256 toId = HashLib.hash(id, toSubaccount);
+				toClue = addUserCreditWithClue(toSession, toClue, toId, amount);
+			}
+
+			saveUserClue(toSession, toClue);
+		} else {
+			for (uint256 i = 0; i < ops.length; i++) {
+				TokenOp calldata op = ops[i];
+				(uint256 id, uint256 amount) = (op.tokenId, op.amount);
+				if (check)
+					_decreaseApproval(from, id, amount);
+
+				uint256 fromId = HashLib.hash(id, fromSubaccount);
+				fromClue = addUserDebitWithClue(fromSession, fromClue, fromId, amount);
+
+				uint256 toId = HashLib.hash(id, toSubaccount);
+				fromClue = addUserCreditWithClue(fromSession, fromClue, toId, amount);
+			}
+		}
+		saveUserClue(fromSession, fromClue);
+		return true;
+	}
+
 	function _decreaseApproval(address sender, uint256 id, uint256 amount) internal {
 		uint256 allowed = allowance[sender][msg.sender][id];
 		if (allowed != type(uint256).max)
@@ -83,22 +158,6 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 		if (msg.sender != from && !isOperator[from][msg.sender])
 			_decreaseApproval(from, id, amount);
 		_transferFrom(from, to, id, amount);
-
-		return true;
-	}
-
-	function transferFrom(address from, address to, TokenOp[] calldata ops) public returns (bool) {
-		bool check = msg.sender == from;
-		if (!check)
-			check = !isOperator[from][msg.sender];
-
-		for (uint256 i = 0; i < ops.length; i++) {
-			TokenOp calldata op = ops[i];
-			(uint256 id, uint256 amount) = (op.tokenId, op.amount);
-			if (check)
-				_decreaseApproval(from, id, amount);
-			_transferFrom(from, to, id, amount);
-		}
 
 		return true;
 	}
