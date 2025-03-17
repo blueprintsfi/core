@@ -16,11 +16,8 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 	error InvalidChecksum();
 	error AccessDenied();
 
-	/// @notice eip-6909 operator mapping
 	mapping(address => mapping(address => bool)) public isOperator;
-	/// @notice eip-6909 balance mapping
 	mapping(address => mapping(uint256 => uint256)) private _balanceOf;
-	/// @notice eip-6909 allowance mapping
 	mapping(address => mapping(address => mapping(uint256 => uint256))) public allowance;
 
 	function balanceOf(address user, uint256 subaccount, uint256 tokenId) public returns (uint256) {
