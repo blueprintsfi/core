@@ -56,8 +56,8 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 		uint256 toSubaccount,
 		TokenOp[] calldata ops
 	) public returns (bool) {
-		bool check = msg.sender == from;
-		if (!check)
+		bool check = msg.sender != from;
+		if (check)
 			check = !isOperator[from][msg.sender];
 
 		for (uint256 i = 0; i < ops.length; i++) {
@@ -79,8 +79,8 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 		uint256 toSubaccount,
 		TokenOp[] calldata ops
 	) public returns (bool) {
-		bool check = msg.sender == from;
-		if (!check)
+		bool check = msg.sender != from;
+		if (check)
 			check = !isOperator[from][msg.sender];
 
 		FlashSession session = getCurrentSession();
