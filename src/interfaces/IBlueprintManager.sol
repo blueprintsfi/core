@@ -40,10 +40,10 @@ interface IBlueprintManager is IFlashAccounting {
 	///       via cook invoked by the user or their operator
 	function mint(address to, TokenOp[] calldata ops) external;
 
-	function isOperator(address user, address operator) external returns (bool);
-	function balanceOf(address user, uint256 tokenId) external returns (uint256);
-	function balanceOf(address user, uint256 subaccount, uint256 tokenId) external returns (uint256);
-	function allowance(address user, address allowed, uint256 tokenId) external returns (uint256);
+	function isOperator(address user, address operator) external view returns (bool);
+	function balanceOf(address user, uint256 tokenId) external view returns (uint256);
+	function balanceOf(address user, uint256 subaccount, uint256 tokenId) external view returns (uint256);
+	function allowance(address user, address allowed, uint256 tokenId) external view returns (uint256);
 	function transfer(address receiver, uint256 id, uint256 amount) external returns (bool);
 	function transfer(address to, TokenOp[] calldata ops) external returns (bool);
 	function transferFrom(address from, address to, uint256 id, uint256 amount) external returns (bool);

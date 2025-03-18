@@ -20,11 +20,11 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 	mapping(address => mapping(uint256 => uint256)) private _balanceOf;
 	mapping(address => mapping(address => mapping(uint256 => uint256))) public allowance;
 
-	function balanceOf(address user, uint256 subaccount, uint256 tokenId) public returns (uint256) {
+	function balanceOf(address user, uint256 subaccount, uint256 tokenId) public view returns (uint256) {
 		return _balanceOf[user][HashLib.hash(tokenId, subaccount)];
 	}
 
-	function balanceOf(address user, uint256 tokenId) public returns (uint256 balance) {
+	function balanceOf(address user, uint256 tokenId) public view returns (uint256 balance) {
 		return balanceOf(user, 0, tokenId);
 	}
 
