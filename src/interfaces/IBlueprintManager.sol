@@ -32,6 +32,7 @@ interface IBlueprintManager is IFlashAccounting {
 	/// @dev keep in mind that burning (inverting this action) is only possible
 	///       via cook invoked by the user or their operator
 	function mint(address to, uint256 tokenId, uint256 amount) external;
+	function mint(address to, uint256 toSubaccount, uint256 tokenId, uint256 amount) external;
 
 	/// @notice mints many types of tokens according to the `ops` array
 	/// @param to the address to mint to
@@ -39,6 +40,7 @@ interface IBlueprintManager is IFlashAccounting {
 	/// @dev keep in mind that burning (inverting this action) is only possible
 	///       via cook invoked by the user or their operator
 	function mint(address to, TokenOp[] calldata ops) external;
+	function mint(address to, uint256 toSubaccount, TokenOp[] calldata ops) external;
 
 	function isOperator(address user, address operator) external view returns (bool);
 	function balanceOf(address user, uint256 tokenId) external view returns (uint256);
