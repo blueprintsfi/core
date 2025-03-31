@@ -46,7 +46,7 @@ string constant WITNESS_TYPE_STRING =
 	"TokenPermissions(address token,uint256 amount)";
 
 function getWitness(address to, uint256 toSubaccount) pure returns (bytes32 witness) {
-	bytes32 _to = bytes20(to);
+	uint256 _to = uint160(to);
 	bytes32 typehash = DEPOSIT_TYPEHASH;
 	assembly ("memory-safe") {
 		let ptr := mload(0x40)
