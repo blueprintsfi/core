@@ -4,7 +4,7 @@ pragma solidity 0.8.27;
 import {Test, console2} from "forge-std/Test.sol";
 import {BlueprintManager, TokenOp, BlueprintCall, HashLib} from "../src/BlueprintManager.sol";
 import {NativeBlueprint} from "../src/blueprints/wrappers/NativeBlueprint.sol";
-import {ERC20Blueprint} from "../src/blueprints/wrappers/ERC20Blueprint.sol";
+import {ERC20Blueprint, IPermit2} from "../src/blueprints/wrappers/ERC20Blueprint.sol";
 import {VestingBlueprint, IVestingSchedule} from "../src/blueprints/vesting/VestingBlueprint.sol";
 import {BasketBlueprint} from "../src/blueprints/BasketBlueprint.sol";
 import {ERC20 as ERC20Abstract} from "solmate/tokens/ERC20.sol";
@@ -26,7 +26,7 @@ contract BlueprintManagerTest is Test {
 	BlueprintManager manager = new BlueprintManager();
 	NativeBlueprint native = new NativeBlueprint(manager);
 	IBlueprint vesting = new VestingBlueprint(manager);
-	ERC20Blueprint erc20wrapper = new ERC20Blueprint(manager);
+	ERC20Blueprint erc20wrapper = new ERC20Blueprint(manager, IPermit2(address(0)));
 	IBlueprint basket = new BasketBlueprint(manager);
 	IVestingSchedule schedule = new LinearCliffVestingSchedule();
 	ERC20 erc20 = new ERC20();
@@ -318,7 +318,7 @@ contract BlueprintManagerTest is Test {
 
 		vm.startPrank(from);
 		erc20.approve(address(erc20wrapper), amount);
-		erc20wrapper.deposit(address(erc20), to, amount);
+		erc20wrapper.deposit(address(erc20), to, 0, amount);
 		vm.stopPrank();
 
 		assertEq(erc20.balanceOf(address(erc20wrapper)), amount);

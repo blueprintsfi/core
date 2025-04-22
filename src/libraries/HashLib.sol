@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import { TokenOp } from "../interfaces/IBlueprintManager.sol";
-
 library HashLib {
 	function hash(address addr, uint256 val) internal pure returns (uint256 res) {
 		assembly ("memory-safe") {

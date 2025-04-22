@@ -4,10 +4,8 @@ pragma solidity ^0.8.0;
 import {BasicBlueprint, TokenOp, IBlueprintManager} from "../BasicBlueprint.sol";
 import {gcd} from "../../libraries/Math.sol";
 
-// an overly simplified option blueprint which leaks value to arbitrageurs at expiry
+// it may leak value to arbitrageurs at expiry if the owner didn't excercise their option
 contract MicroOptionBlueprint is BasicBlueprint {
-	mapping (uint256 baseId => uint256 count) public reserves;
-
 	constructor(IBlueprintManager manager) BasicBlueprint(manager) {}
 
 	function executeAction(bytes calldata action) external onlyManager returns (
@@ -42,10 +40,14 @@ contract MicroOptionBlueprint is BasicBlueprint {
 		if (block.timestamp < expiry || mint)
 			mintBurn[1] = TokenOp(long, amount);
 
-		if (mint)
-			reserves[long] += amount;
-		else // underflow check prevents from going beyond reserves
-			reserves[long] -= amount;
+		// send tokens to respective subaccount for reserve isolation
+		blueprintManager.flashTransferFrom(
+			address(this),
+			mint ? 0 : long,
+			address(this),
+			mint ? long : 0,
+			giveTake
+		);
 
 		return mint ?
 			(mintBurn, zero(), zero(), giveTake) :

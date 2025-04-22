@@ -5,8 +5,6 @@ import {BasicBlueprint, TokenOp, IBlueprintManager} from "../BasicBlueprint.sol"
 import {gcd} from "../../libraries/Math.sol";
 
 contract SimpleOptionBlueprint is BasicBlueprint {
-	mapping (uint256 baseId => uint256 count) public reserves;
-
 	constructor(IBlueprintManager manager) BasicBlueprint(manager) {}
 
 	function executeAction(bytes calldata action) external onlyManager returns (
@@ -38,10 +36,14 @@ contract SimpleOptionBlueprint is BasicBlueprint {
 		mintBurn[0] = TokenOp(short, amount);
 		mintBurn[1] = TokenOp(long, amount);
 
-		if (mint)
-			reserves[long] += amount;
-		else // underflow check prevents from going beyond reserves
-			reserves[long] -= amount;
+		// send tokens to respective subaccount for reserve isolation
+		blueprintManager.flashTransferFrom(
+			address(this),
+			mint ? 0 : long,
+			address(this),
+			mint ? long : 0,
+			giveTake
+		);
 
 		return mint ?
 			(mintBurn, zero(), zero(), giveTake) :
