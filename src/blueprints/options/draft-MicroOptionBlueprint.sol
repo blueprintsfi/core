@@ -31,8 +31,8 @@ contract MicroOptionBlueprint is BasicBlueprint {
 		uint256 short;
 		uint256 long;
 		unchecked {
-			short = uint256(keccak256(abi.encodePacked(token0, token1, num, denom, expiry))) + 2;
-			long = short - (swap ? 1 : 2);
+			short = uint256(keccak256(abi.encodePacked(token0, token1, num, denom, expiry)));
+			long = short + (swap ? 1 : 2);
 		}
 
 		TokenOp[] memory mintBurn = new TokenOp[](2);
