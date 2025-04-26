@@ -42,7 +42,7 @@ contract SimpleOptionBlueprint is BasicBlueprint {
 
 		TokenOp[] memory mintBurn = new TokenOp[](2);
 		mintBurn[0] = TokenOp(short, config.count);
-		if (!mint && block.timestamp > config.expiry)
+		if (mint || block.timestamp <= config.expiry)
 			mintBurn[1] = TokenOp(long, config.count);
 
 		// send tokens to respective subaccount for reserve isolation
