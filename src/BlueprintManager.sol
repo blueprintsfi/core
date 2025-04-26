@@ -124,6 +124,10 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 		return true;
 	}
 
+	function subaccountFlashTransfer(uint256 from, uint256 to, TokenOp[] calldata ops) public returns (bool) {
+		return flashTransferFrom(msg.sender, from, msg.sender, to, ops);
+	}
+
 	function _decreaseApproval(address sender, uint256 id, uint256 amount) internal {
 		uint256 allowed = allowance[sender][msg.sender][id];
 		if (allowed != type(uint256).max)
