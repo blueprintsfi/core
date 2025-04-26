@@ -26,11 +26,24 @@ contract SimpleOptionBlueprint is BasicBlueprint {
 		(Config memory config, bool mint) = abi.decode(action, (Config, bool));
 		TokenOp[] memory giveTake = oneOperationArray(config.token0, config.num * config.count);
 
-		(uint256 short, uint256 long) = getTokens(config);
+		uint256 short;
+		uint256 long;
+		bool swap = config.token0 < config.token1;
+		if (swap) {
+			(config.token0, config.token1) = (config.token1, config.token0);
+			(config.num, config.denom) = (config.denom, config.num);
+		}
+		assembly ("memory-safe") {
+			short := keccak256(config, 0xe0)
+		}
+		unchecked {
+			long = short + (swap ? 1 : 2);
+		}
 
 		TokenOp[] memory mintBurn = new TokenOp[](2);
 		mintBurn[0] = TokenOp(short, config.count);
-		mintBurn[1] = TokenOp(long, config.count);
+		if (!mint && block.timestamp > config.expiry)
+			mintBurn[1] = TokenOp(long, config.count);
 
 		// send tokens to respective subaccount for reserve isolation
 		blueprintManager.flashTransferFrom(
@@ -41,33 +54,26 @@ contract SimpleOptionBlueprint is BasicBlueprint {
 			giveTake
 		);
 
+		// check whether the action has been allowed by the settler
+		if (block.timestamp > config.expiry && (block.timestamp <= config.settlement || mint)) {
+			uint256 remaining;
+			assembly ("memory-safe") {
+				let slot := mload(add(config, 0xe0))
+				remaining := tload(slot)
+				tstore(slot, sub(remaining, 1)) // optimistically decrease permitted actions counter
+			}
+			if (remaining == 0)
+				revert AccessDenied();
+		}
+
 		return mint ?
 			(mintBurn, zero(), zero(), giveTake) :
 			(zero(), mintBurn, giveTake, zero());
 	}
 
-	function mint(address to, Config calldata config) external {
-		if (block.timestamp <= config.expiry)
-			revert AccessDenied();
-		if (block.timestamp <= config.settlement && msg.sender != config.settler)
-			revert AccessDenied();
-
-		(,uint256 long) = getTokens(config);
-		blueprintManager.mint(to, long, config.count);
-	}
-
-	function getTokens(Config memory config) internal pure returns (uint256 short, uint256 long) {
-		bool swap = config.token0 < config.token1;
-		if (swap) {
-			(config.token0, config.token1) = (config.token1, config.token0);
-			(config.num, config.denom) = (config.denom, config.num);
-		}
-
+	function allowActions(uint256 count) external {
 		assembly ("memory-safe") {
-			short := keccak256(config, 0xe0)
-		}
-		unchecked {
-			long = short + (swap ? 1 : 2);
+			tstore(caller(), count)
 		}
 	}
 }
