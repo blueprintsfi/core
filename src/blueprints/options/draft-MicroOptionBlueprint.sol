@@ -41,13 +41,7 @@ contract MicroOptionBlueprint is BasicBlueprint {
 			mintBurn[1] = TokenOp(long, amount);
 
 		// send tokens to respective subaccount for reserve isolation
-		blueprintManager.flashTransferFrom(
-			address(this),
-			mint ? 0 : long,
-			address(this),
-			mint ? long : 0,
-			giveTake
-		);
+		blueprintManager.subaccountFlashTransfer(mint ? 0 : long, mint ? long : 0, giveTake);
 
 		return mint ?
 			(mintBurn, zero(), zero(), giveTake) :

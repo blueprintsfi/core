@@ -46,13 +46,7 @@ contract SimpleOptionBlueprint is BasicBlueprint {
 			mintBurn[1] = TokenOp(long, config.count);
 
 		// send tokens to respective subaccount for reserve isolation
-		blueprintManager.flashTransferFrom(
-			address(this),
-			mint ? 0 : long,
-			address(this),
-			mint ? long : 0,
-			giveTake
-		);
+		blueprintManager.subaccountFlashTransfer(mint ? 0 : long, mint ? long : 0, giveTake);
 
 		// check whether the action has been allowed by the settler
 		if (block.timestamp > config.expiry && (block.timestamp <= config.settlement || mint)) {

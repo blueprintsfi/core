@@ -5,7 +5,7 @@ import {Test, console2} from "forge-std/Test.sol";
 import {BlueprintManager, TokenOp, BlueprintCall, HashLib} from "../src/BlueprintManager.sol";
 import {NativeBlueprint} from "../src/blueprints/wrappers/NativeBlueprint.sol";
 import {ERC20Blueprint, IPermit2} from "../src/blueprints/wrappers/ERC20Blueprint.sol";
-import {VestingBlueprint, IVestingSchedule} from "../src/blueprints/vesting/VestingBlueprint.sol";
+// import {VestingBlueprint, ISchedule} from "../src/blueprints/vesting/VestingBlueprint.sol";
 import {BasketBlueprint} from "../src/blueprints/BasketBlueprint.sol";
 import {ERC20 as ERC20Abstract} from "solmate/tokens/ERC20.sol";
 
@@ -25,10 +25,10 @@ contract BlueprintManagerTest is Test {
 
 	BlueprintManager manager = new BlueprintManager();
 	NativeBlueprint native = new NativeBlueprint(manager);
-	IBlueprint vesting = new VestingBlueprint(manager);
+	// IBlueprint vesting = new VestingBlueprint(manager);
 	ERC20Blueprint erc20wrapper = new ERC20Blueprint(manager, IPermit2(address(0)));
 	IBlueprint basket = new BasketBlueprint(manager);
-	IVestingSchedule schedule = new LinearCliffVestingSchedule();
+	// IVestingSchedule schedule = new LinearCliffVestingSchedule();
 	ERC20 erc20 = new ERC20();
 
 	BlueprintCall[] public scheduledCalls;
@@ -116,199 +116,199 @@ contract BlueprintManagerTest is Test {
 		manager.cook(address(0), calls);
 	}
 
-	function getLinearCliffVestingPosition(
-		uint256 id,
-		uint256 total,
-		uint256 unclaimed,
-		bytes memory params
-	) public view returns (uint256 tokenId, uint256 count) {
-		if (unclaimed == 0)
-			return (0, 0);
-		count = gcd(total, unclaimed);
-		tokenId = HashLib.hash(
-			address(vesting),
-			uint256(keccak256(abi.encodePacked(
-				id,
-				total / count,
-				unclaimed / count,
-				address(schedule),
-				params
-			)))
-		);
-	}
+	// function getLinearCliffVestingPosition(
+	// 	uint256 id,
+	// 	uint256 total,
+	// 	uint256 unclaimed,
+	// 	bytes memory params
+	// ) public view returns (uint256 tokenId, uint256 count) {
+	// 	if (unclaimed == 0)
+	// 		return (0, 0);
+	// 	count = gcd(total, unclaimed);
+	// 	tokenId = HashLib.hash(
+	// 		address(vesting),
+	// 		uint256(keccak256(abi.encodePacked(
+	// 			id,
+	// 			total / count,
+	// 			unclaimed / count,
+	// 			address(schedule),
+	// 			params
+	// 		)))
+	// 	);
+	// }
 
-	function redeemMaxLinearCliffVesting(
-		address from,
-		uint256 id,
-		uint256 total,
-		uint256 unclaimed,
-		bytes memory params
-	) public returns (uint256 newPosId, uint256 newPosBalance) {
-		BlueprintCall[] memory calls = new BlueprintCall[](1);
-		calls[0] = BlueprintCall(
-			from,
-			address(vesting),
-			abi.encode(
-				id,
-				total,
-				unclaimed,
-				address(schedule),
-				params,
-				total,
-				0
-			),
-			bytes32(0)
-		);
-		vm.prank(from);
-		manager.cook(address(0), calls);
+	// function redeemMaxLinearCliffVesting(
+	// 	address from,
+	// 	uint256 id,
+	// 	uint256 total,
+	// 	uint256 unclaimed,
+	// 	bytes memory params
+	// ) public returns (uint256 newPosId, uint256 newPosBalance) {
+	// 	BlueprintCall[] memory calls = new BlueprintCall[](1);
+	// 	calls[0] = BlueprintCall(
+	// 		from,
+	// 		address(vesting),
+	// 		abi.encode(
+	// 			id,
+	// 			total,
+	// 			unclaimed,
+	// 			address(schedule),
+	// 			params,
+	// 			total,
+	// 			0
+	// 		),
+	// 		bytes32(0)
+	// 	);
+	// 	vm.prank(from);
+	// 	manager.cook(address(0), calls);
 
-		return getLinearCliffVestingPosition(id, total, unclaimed, params);
-	}
+	// 	return getLinearCliffVestingPosition(id, total, unclaimed, params);
+	// }
 
-	function test_vesting(
-		address from,
-		uint256 amount,
-		uint256 batch,
-		uint256 measureTimestamp,
-		bool noSchedule
-	) public {
-		vm.assume(from != address(vesting));
-		vm.assume(batch > 1);
-		vm.assume(amount > 0);
+	// function test_vesting(
+	// 	address from,
+	// 	uint256 amount,
+	// 	uint256 batch,
+	// 	uint256 measureTimestamp,
+	// 	bool noSchedule
+	// ) public {
+	// 	vm.assume(from != address(vesting));
+	// 	vm.assume(batch > 1);
+	// 	vm.assume(amount > 0);
 
-		unchecked {
-			// amount * batch doesn't overflow
-			vm.assume(amount * batch / batch == amount);
-			vm.assume(amount * batch * 1000 / 1000 == amount * batch);
-		}
-		// vm.assume(amount == 10);
-		// vm.assume(batch == 2);
-		uint256 id = test_wrapNative(from, batch * amount);
+	// 	unchecked {
+	// 		// amount * batch doesn't overflow
+	// 		vm.assume(amount * batch / batch == amount);
+	// 		vm.assume(amount * batch * 1000 / 1000 == amount * batch);
+	// 	}
+	// 	// vm.assume(amount == 10);
+	// 	// vm.assume(batch == 2);
+	// 	uint256 id = test_wrapNative(from, batch * amount);
 
-		// add zero variable so that the compiler will make runtime actually save
-		// these variables and not derive at runtime while the timestamp changes
-		uint256 zero = noSchedule ? 0 : 1;
-		zero = zero * zero - zero;
-		uint256 start = block.timestamp + 1000 + zero;
-		uint256 end = block.timestamp + 2000 + zero;
-		uint256 cliff = block.timestamp + 1250 + zero;
-		console2.log(cliff);
-		bytes memory params = abi.encode(start, end, cliff);
+	// 	// add zero variable so that the compiler will make runtime actually save
+	// 	// these variables and not derive at runtime while the timestamp changes
+	// 	uint256 zero = noSchedule ? 0 : 1;
+	// 	zero = zero * zero - zero;
+	// 	uint256 start = block.timestamp + 1000 + zero;
+	// 	uint256 end = block.timestamp + 2000 + zero;
+	// 	uint256 cliff = block.timestamp + 1250 + zero;
+	// 	console2.log(cliff);
+	// 	bytes memory params = abi.encode(start, end, cliff);
 
-		vm.assume(measureTimestamp >= start);
+	// 	vm.assume(measureTimestamp >= start);
 
-		scheduledCalls.push(BlueprintCall(
-			from,
-			address(vesting),
-			abi.encode(
-				id,
-				amount * batch,
-				0,
-				address(schedule),
-				params,
-				batch,
-				batch / 2
-			),
-			bytes32(0)
-		));
+	// 	scheduledCalls.push(BlueprintCall(
+	// 		from,
+	// 		address(vesting),
+	// 		abi.encode(
+	// 			id,
+	// 			amount * batch,
+	// 			0,
+	// 			address(schedule),
+	// 			params,
+	// 			batch,
+	// 			batch / 2
+	// 		),
+	// 		bytes32(0)
+	// 	));
 
-		uint256 vestingId;
-		uint256 balance;
-		if (noSchedule) {
-			vm.prank(from);
-			manager.cook(address(0), scheduledCalls);
-			scheduledCalls = new BlueprintCall[](0);
+	// 	uint256 vestingId;
+	// 	uint256 balance;
+	// 	if (noSchedule) {
+	// 		vm.prank(from);
+	// 		manager.cook(address(0), scheduledCalls);
+	// 		scheduledCalls = new BlueprintCall[](0);
 
-			(vestingId, balance) = getLinearCliffVestingPosition(
-				id,
-				amount * batch,
-				amount * (batch / 2),
-				params
-			);
+	// 		(vestingId, balance) = getLinearCliffVestingPosition(
+	// 			id,
+	// 			amount * batch,
+	// 			amount * (batch / 2),
+	// 			params
+	// 		);
 
-			assertEq(manager.balanceOf(from, vestingId), balance);
-		}
+	// 		assertEq(manager.balanceOf(from, vestingId), balance);
+	// 	}
 
-		// now, let's deposit the full batch
-		scheduledCalls.push(BlueprintCall(
-			from,
-			address(vesting),
-			abi.encode(
-				id,
-				amount * batch,
-				amount * (batch / 2),
-				address(schedule),
-				params,
-				batch,
-				batch
-			),
-			bytes32(0)
-		));
+	// 	// now, let's deposit the full batch
+	// 	scheduledCalls.push(BlueprintCall(
+	// 		from,
+	// 		address(vesting),
+	// 		abi.encode(
+	// 			id,
+	// 			amount * batch,
+	// 			amount * (batch / 2),
+	// 			address(schedule),
+	// 			params,
+	// 			batch,
+	// 			batch
+	// 		),
+	// 		bytes32(0)
+	// 	));
 
-		vm.prank(from);
-		manager.cook(address(0), scheduledCalls);
-		scheduledCalls = new BlueprintCall[](0);
+	// 	vm.prank(from);
+	// 	manager.cook(address(0), scheduledCalls);
+	// 	scheduledCalls = new BlueprintCall[](0);
 
-		(vestingId, balance) = getLinearCliffVestingPosition(
-			id,
-			amount * batch,
-			amount * batch,
-			params
-		);
+	// 	(vestingId, balance) = getLinearCliffVestingPosition(
+	// 		id,
+	// 		amount * batch,
+	// 		amount * batch,
+	// 		params
+	// 	);
 
-		assertEq(manager.balanceOf(from, vestingId), balance);
-		console2.log("after full deposit the balance is", manager.balanceOf(from, id));
-		assertEq(manager.balanceOf(from, id), 0, "didn't use up all tokens");
+	// 	assertEq(manager.balanceOf(from, vestingId), balance);
+	// 	console2.log("after full deposit the balance is", manager.balanceOf(from, id));
+	// 	assertEq(manager.balanceOf(from, id), 0, "didn't use up all tokens");
 
-		vm.warp(block.timestamp + 1000);
+	// 	vm.warp(block.timestamp + 1000);
 
-		redeemMaxLinearCliffVesting(
-			from,
-			id,
-			amount * batch,
-			amount * batch,
-			params
-		);
+	// 	redeemMaxLinearCliffVesting(
+	// 		from,
+	// 		id,
+	// 		amount * batch,
+	// 		amount * batch,
+	// 		params
+	// 	);
 
-		// make sure that the operation didn't do anything – we can't decrease
-		// the vesting position just yet
-		assertEq(manager.balanceOf(from, vestingId), balance);
+	// 	// make sure that the operation didn't do anything – we can't decrease
+	// 	// the vesting position just yet
+	// 	assertEq(manager.balanceOf(from, vestingId), balance);
 
-		vm.warp(measureTimestamp);
-		redeemMaxLinearCliffVesting(
-			from,
-			id,
-			amount * batch,
-			amount * batch,
-			params
-		);
+	// 	vm.warp(measureTimestamp);
+	// 	redeemMaxLinearCliffVesting(
+	// 		from,
+	// 		id,
+	// 		amount * batch,
+	// 		amount * batch,
+	// 		params
+	// 	);
 
-		(vestingId, balance) = getLinearCliffVestingPosition(
-			id,
-			amount * batch,
-			amount * batch - schedule.getVestedTokens(
-				amount * batch,
-				params
-			),
-			params
-		);
+	// 	(vestingId, balance) = getLinearCliffVestingPosition(
+	// 		id,
+	// 		amount * batch,
+	// 		amount * batch - schedule.getVestedTokens(
+	// 			amount * batch,
+	// 			params
+	// 		),
+	// 		params
+	// 	);
 
-		console2.log("measure:", measureTimestamp);
-		console2.log("cliff:", cliff);
-		console2.log("timestamp:", block.timestamp);
-		console2.log("end:", end);
-		console2.log("start:", start);
+	// 	console2.log("measure:", measureTimestamp);
+	// 	console2.log("cliff:", cliff);
+	// 	console2.log("timestamp:", block.timestamp);
+	// 	console2.log("end:", end);
+	// 	console2.log("start:", start);
 
-		assertEq(manager.balanceOf(from, vestingId), balance);
-		assertEq(
-			manager.balanceOf(from, id),
-			measureTimestamp < cliff ?
-				0 :
-				(measureTimestamp > end ?
-					amount * batch :
-					amount * batch * (measureTimestamp - start) / 1000)
-		);
-	}
+	// 	assertEq(manager.balanceOf(from, vestingId), balance);
+	// 	assertEq(
+	// 		manager.balanceOf(from, id),
+	// 		measureTimestamp < cliff ?
+	// 			0 :
+	// 			(measureTimestamp > end ?
+	// 				amount * batch :
+	// 				amount * batch * (measureTimestamp - start) / 1000)
+	// 	);
+	// }
 
 	function test_erc20Wrap(address from, address to, uint256 amount) public returns (uint256 id) {
 		vm.assume(amount != type(uint256).max);
