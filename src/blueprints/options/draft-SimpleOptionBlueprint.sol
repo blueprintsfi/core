@@ -2,7 +2,17 @@
 pragma solidity ^0.8.0;
 
 import {BasicBlueprint, TokenOp, IBlueprintManager} from "../BasicBlueprint.sol";
-import {gcd} from "../../libraries/Math.sol";
+
+struct Config {
+	uint256 token0;
+	uint256 token1;
+	uint256 num;
+	uint256 denom;
+	uint256 expiry;
+	uint256 settlement;
+	address settler;
+	uint256 count;
+}
 
 contract SimpleOptionBlueprint is BasicBlueprint {
 	constructor(IBlueprintManager manager) BasicBlueprint(manager) {}
@@ -13,28 +23,14 @@ contract SimpleOptionBlueprint is BasicBlueprint {
 		TokenOp[] memory /*give*/,
 		TokenOp[] memory /*take*/
 	) {
-		(
-			uint256 token0,
-			uint256 token1,
-			uint256 num,
-			uint256 denom,
-			uint256 expiry,
-			uint256 settlement,
-			address settler,
-			bool mint
-		) = abi.decode(
-			action,
-			(uint256, uint256, uint256, uint256, uint256, uint256, address, bool)
-		);
+		(Config memory config, bool mint) = abi.decode(action, (Config, bool));
+		TokenOp[] memory giveTake = oneOperationArray(config.token0, config.num * config.count);
 
-		TokenOp[] memory giveTake = oneOperationArray(token0, num);
-
-		(uint256 short, uint256 long, uint256 amount) =
-			getTokens(token0, token1, num, denom, expiry, settlement, settler);
+		(uint256 short, uint256 long) = getTokens(config);
 
 		TokenOp[] memory mintBurn = new TokenOp[](2);
-		mintBurn[0] = TokenOp(short, amount);
-		mintBurn[1] = TokenOp(long, amount);
+		mintBurn[0] = TokenOp(short, config.count);
+		mintBurn[1] = TokenOp(long, config.count);
 
 		// send tokens to respective subaccount for reserve isolation
 		blueprintManager.flashTransferFrom(
@@ -50,50 +46,28 @@ contract SimpleOptionBlueprint is BasicBlueprint {
 			(zero(), mintBurn, giveTake, zero());
 	}
 
-	function mint(
-		address to,
-		uint256 token0,
-		uint256 token1,
-		uint256 num,
-		uint256 denom,
-		uint256 expiry,
-		uint256 settlement,
-		address settler
-	) external {
-		if (block.timestamp <= expiry || (block.timestamp <= settlement && msg.sender != settler))
+	function mint(address to, Config calldata config) external {
+		if (block.timestamp <= config.expiry)
+			revert AccessDenied();
+		if (block.timestamp <= config.settlement && msg.sender != config.settler)
 			revert AccessDenied();
 
-		(,uint256 long, uint256 amount) =
-			getTokens(token0, token1, num, denom, expiry, settlement, settler);
-
-		blueprintManager.mint(to, long, amount);
+		(,uint256 long) = getTokens(config);
+		blueprintManager.mint(to, long, config.count);
 	}
 
-	function getTokens(
-		uint256 token0,
-		uint256 token1,
-		uint256 num,
-		uint256 denom,
-		uint256 expiry,
-		uint256 settlement,
-		address settler
-	) internal pure returns (uint256 short, uint256 long, uint256 amount) {
-		amount = gcd(num, denom);
-		(num, denom) = (num / amount, denom / amount);
-
-		bool swap = token0 < token1;
+	function getTokens(Config memory config) internal pure returns (uint256 short, uint256 long) {
+		bool swap = config.token0 < config.token1;
 		if (swap) {
-			(token0, token1) = (token1, token0);
-			(num, denom) = (denom, num);
+			(config.token0, config.token1) = (config.token1, config.token0);
+			(config.num, config.denom) = (config.denom, config.num);
 		}
 
-		uint256 id = uint256(keccak256(
-			abi.encodePacked(token0, token1, num, denom, expiry, settlement, settler)
-		));
-
+		assembly ("memory-safe") {
+			short := keccak256(config, 0xe0)
+		}
 		unchecked {
-			short = id + 2;
-			long = id + (swap ? 1 : 0);
+			long = short + (swap ? 1 : 2);
 		}
 	}
 }
