@@ -9,7 +9,7 @@ struct Data {
 }
 
 contract ConstantOracle is IOracle {
-	function cache(address oracle, bytes32 feedId, bytes calldata proof) external returns (uint256 data) {
+	function _cache(address oracle, bytes32 feedId, uint256 data) internal {
 		Data storage reading;
 		assembly ("memory-safe") {
 			mstore(0, oracle)
@@ -17,7 +17,6 @@ contract ConstantOracle is IOracle {
 			reading.slot := keccak256(12, 52)
 		}
 		require(reading.dataPlusOne == 0);
-		data = IOracle(oracle).getReading(feedId, proof);
 		unchecked {
 			if (data == type(uint256).max) {
 				reading.dataPlusOne = data;
@@ -25,6 +24,15 @@ contract ConstantOracle is IOracle {
 			} else
 				reading.dataPlusOne = data + 1;
 		}
+	}
+
+	function cache(bytes32 feedId, uint256 data) external {
+		_cache(msg.sender, feedId, data);
+	}
+
+	function cache(address oracle, bytes32 feedId, bytes calldata proof) external returns (uint256 data) {
+		data = IOracle(oracle).getReading(feedId, proof);
+		_cache(oracle, feedId, data);
 	}
 
 	function getReading(bytes32 feedId, bytes calldata) external view returns (uint256 data) {
