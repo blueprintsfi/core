@@ -40,13 +40,11 @@ contract ConstantOracle is IOracle {
 		assembly ("memory-safe") {
 			reading.slot := feedId
 		}
-		uint256 value = reading.dataPlusOne;
-		require(value != 0, "Reading not cached yet");
+		data = reading.dataPlusOne;
+		require(data != 0, "Reading not cached yet");
 		unchecked {
-			if (value-- == type(uint256).max)
-				data = value + reading.add;
-			else
-				data = value;
+			if (data-- == type(uint256).max)
+				data += reading.add;
 		}
 	}
 }
