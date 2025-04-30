@@ -56,8 +56,6 @@ contract OracleBasedLinearBlueprint is BasicBlueprint {
 			// tokenId, feedId, startRange, endRange, slope, offset, denominator      times count
 			// tokenId, feedId, startRange, endRange, -slope, ***, denominator      times count
 			// the sign is only a signal of the other side of the position
-			// where total is (slope * (endRange - 1 - startRange) + offset) / denominator
-			// the value of the function is
 			require(params.slope >= 0);
 			require(params.offset < arg * params.denominator); // note: already checked by an underflow check below
 			if (params.slope < 0)
