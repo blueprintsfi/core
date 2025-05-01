@@ -22,7 +22,7 @@ contract ComposablePredictionBlueprint is BasicBlueprint {
 		constantOracle = oracle;
 	}
 
-	function executeAction(bytes calldata action) external onlyManager view returns (
+	function executeAction(bytes calldata action) external view returns (
 		TokenOp[] memory /*mint*/,
 		TokenOp[] memory /*burn*/,
 		TokenOp[] memory /*give*/,
@@ -30,10 +30,10 @@ contract ComposablePredictionBlueprint is BasicBlueprint {
 	) {
 		TokenParams calldata params;
 		assembly ("memory-safe") {
-			params := calldataload(action.offset)
+			params := add(action.offset, calldataload(action.offset))
 		}
 		(uint256 count, bytes32 mergeFeed, uint256 cut, uint256 end, bool merge, bool settle) =
-			abi.decode(action[0x20:], (uint256, bytes32, uint256, uint256, bool, bool));
+			abi.decode(action[0x20:0xe0], (uint256, bytes32, uint256, uint256, bool, bool));
 
 		TokenOp[] memory giveTake = zero();
 		TokenOp[] memory initial = zero();
@@ -44,16 +44,16 @@ contract ComposablePredictionBlueprint is BasicBlueprint {
 		bool done = false;
 		while (idx < params.constraints.length) {
 			if (params.constraints[idx].feedId == mergeFeed) {
-				require(!settle);
+				require(!settle, "must not be settling");
+				uint256 startRange = params.constraints[idx].startRange;
 				uint256 endRange = params.constraints[idx].endRange;
-				uint256 startRange = params.constraints[idx].endRange;
 				uint256 lastValue;
 				unchecked {
 					lastValue = endRange - 1;
 				}
 				// require(startRange <= lastValue);
-				require(startRange < cut && cut <= lastValue);
-				require(startRange != endRange); // for the case of 0, 0
+				require(startRange < cut && cut <= lastValue, "invalid cut");
+				require(startRange != endRange, "invalid range"); // for the case of 0, 0
 				_final[0] = TokenOp(hashReplace(params, idx, startRange, cut), count);
 				_final[1] = TokenOp(hashReplace(params, idx, cut, endRange), count);
 				done = true;
@@ -66,7 +66,7 @@ contract ComposablePredictionBlueprint is BasicBlueprint {
 
 		if (!done) {
 			if (!settle) {
-				require(cut != 0);
+				require(cut != 0, "cut must be nonzero");
 				_final[0] = TokenOp(hashAdd(params, idx, mergeFeed, 0, cut), count);
 				_final[1] = TokenOp(hashAdd(params, idx, mergeFeed, cut, 0), count);
 			} else {
