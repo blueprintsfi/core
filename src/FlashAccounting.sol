@@ -33,7 +33,7 @@ abstract contract FlashAccounting is IFlashAccounting {
 		}
 	}
 
-	function getCurrentSession() internal view returns (FlashSession session) {
+	function getCurrentSession(bool mustBeActive) internal view returns (FlashSession session) {
 		address realizer;
 		uint256 mainIndex;
 		assembly ("memory-safe") {
@@ -42,8 +42,12 @@ abstract contract FlashAccounting is IFlashAccounting {
 			realizer := shr(96, mainClue)
 		}
 
-		if (mainIndex == 0)
-			revert NoFlashAccountingActive();
+		if (mainIndex == 0) {
+			if (mustBeActive)
+				revert NoFlashAccountingActive();
+			else
+				return session;
+		}
 
 		assembly ("memory-safe") {
 			mstore(0, sub(mainIndex, 1))

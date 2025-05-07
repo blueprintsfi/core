@@ -83,7 +83,7 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 		if (check)
 			check = !isOperator[from][msg.sender];
 
-		FlashSession session = getCurrentSession();
+		FlashSession session = getCurrentSession(true);
 		(FlashUserSession fromSession, UserClue fromClue) =
 			initializeUserSession(session, from);
 
@@ -186,7 +186,7 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 	}
 
 	function cook(BlueprintCall[] calldata calls) external {
-		FlashSession session = getCurrentSession();
+		FlashSession session = getCurrentSession(true);
 
 		uint256 len = calls.length;
 		for (uint256 k = 0; k < len; k++)
@@ -280,7 +280,7 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 	}
 
 	function credit(uint256 id, uint256 amount) external {
-		FlashSession session = getCurrentSession();
+		FlashSession session = getCurrentSession(true);
 
 		(FlashUserSession userSession, UserClue userClue) =
 			initializeUserSession(session, msg.sender);
@@ -292,7 +292,7 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 	}
 
 	function credit(TokenOp[] calldata ops) external {
-		FlashSession session = getCurrentSession();
+		FlashSession session = getCurrentSession(true);
 
 		(FlashUserSession userSession, UserClue userClue) =
 			initializeUserSession(session, msg.sender);
@@ -310,7 +310,7 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 
 	// todo: is this function useful at all?
 	function debit(uint256 id, uint256 amount) external {
-		FlashSession session = getCurrentSession();
+		FlashSession session = getCurrentSession(true);
 
 		(FlashUserSession userSession, UserClue userClue) =
 			initializeUserSession(session, msg.sender);
@@ -323,7 +323,7 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 
 	// todo: is this function useful at all?
 	function debit(TokenOp[] calldata ops) external {
-		FlashSession session = getCurrentSession();
+		FlashSession session = getCurrentSession(true);
 
 		(FlashUserSession userSession, UserClue userClue) =
 			initializeUserSession(session, msg.sender);
