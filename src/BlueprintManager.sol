@@ -49,6 +49,21 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 		_mintZeroSubaccount(to, id, amount);
 	}
 
+	function tryFlashTransferFrom(
+		address from,
+		uint256 fromSubaccount,
+		address to,
+		uint256 toSubaccount,
+		TokenOp[] calldata ops
+	) public returns (bool isFlash) {
+		FlashSession session = getCurrentSession(false);
+		isFlash = FlashSession.unwrap(session) != 0;
+		if (isFlash)
+			_flashTransferFrom(session, from, fromSubaccount, to, toSubaccount, ops);
+		else
+			transferFrom(from, fromSubaccount, to, toSubaccount, ops);
+	}
+
 	function transferFrom(
 		address from,
 		uint256 fromSubaccount,
@@ -72,18 +87,18 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 		return true;
 	}
 
-	function flashTransferFrom(
+	function _flashTransferFrom(
+		FlashSession session,
 		address from,
 		uint256 fromSubaccount,
 		address to,
 		uint256 toSubaccount,
 		TokenOp[] calldata ops
-	) public returns (bool) {
+	) internal {
 		bool check = msg.sender != from;
 		if (check)
 			check = !isOperator[from][msg.sender];
 
-		FlashSession session = getCurrentSession(true);
 		(FlashUserSession fromSession, UserClue fromClue) =
 			initializeUserSession(session, from);
 
@@ -121,6 +136,17 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 			}
 		}
 		saveUserClue(fromSession, fromClue);
+	}
+
+	function flashTransferFrom(
+		address from,
+		uint256 fromSubaccount,
+		address to,
+		uint256 toSubaccount,
+		TokenOp[] calldata ops
+	) public returns (bool) {
+		FlashSession session = getCurrentSession(true);
+		_flashTransferFrom(session, from, fromSubaccount, to, toSubaccount, ops);
 		return true;
 	}
 
