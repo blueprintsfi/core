@@ -52,23 +52,45 @@ contract ERC1155Blueprint is BasicBlueprint, ERC1155TokenReceiver {
         return ERC1155TokenReceiver.onERC1155BatchReceived.selector;
     }
 
-	function executeAction(bytes calldata action) external onlyManager returns (
-		TokenOp[] memory /*mint*/,
-		TokenOp[] memory /*burn*/,
-		TokenOp[] memory /*give*/,
-		TokenOp[] memory /*take*/
-	) {
-		// todo: switch the arrays to calldata arrays with assembly for gas optimization
-		(address erc1155, address to, uint256[] memory ids, uint256[] memory amounts, bytes memory data) =
-			abi.decode(action, (address, address, uint256[], uint256[], bytes));
+	function executeAction(bytes calldata action) 
+        external 
+        onlyManager 
+        returns (
+            TokenOp[] memory /* mint */, 
+            TokenOp[] memory /* burn */, 
+            TokenOp[] memory /* give */, 
+            TokenOp[] memory /* take */
+        ) 
+    {
+        address erc1155;
+        address to;
+        uint256[] calldata ids;
+        uint256[] calldata amounts;
+        bytes calldata data;
 
-		ERC1155(erc1155).safeBatchTransferFrom(address(this), to, ids, amounts, data);
+        assembly {            
+            erc1155 := calldataload(action.offset)
+            
+            to := calldataload(add(action.offset, 0x20))
+            
+            ids.offset := add(add(action.offset, calldataload(add(action.offset, 0x40))), 0x20)
+            ids.length := calldataload(add(action.offset, calldataload(add(action.offset, 0x40))))
+            
+            amounts.offset := add(add(action.offset, calldataload(add(action.offset, 0x60))), 0x20)
+            amounts.length := 
+                calldataload(add(action.offset, calldataload(add(action.offset, 0x60))))
 
-		return (
-			zero(),
-			getOperations(erc1155, ids, amounts),
-			zero(),
-			zero()
-		);
-	}
+            data.offset := add(add(action.offset, calldataload(add(action.offset, 0x80))), 0x20)
+            data.length := calldataload(add(action.offset, calldataload(add(action.offset, 0x80))))
+        }
+
+        ERC1155(erc1155).safeBatchTransferFrom(address(this), to, ids, amounts, data);
+
+        return (
+            zero(),
+            getOperations(erc1155, ids, amounts),
+            zero(),
+            zero()
+        );
+    }
 }
