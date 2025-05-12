@@ -95,6 +95,7 @@ contract BlueprintManagerTest is Test {
 		BlueprintCall[] memory calls = new BlueprintCall[](1);
 		calls[0] = BlueprintCall(
 			from,
+			0,
 			address(native),
 			abi.encode(to, amount),
 			postChecksum ?
@@ -331,6 +332,7 @@ contract BlueprintManagerTest is Test {
 		BlueprintCall[] memory calls = new BlueprintCall[](1);
 		calls[0] = BlueprintCall(
 			from,
+			0,
 			address(erc20wrapper),
 			abi.encode(
 				erc20,
@@ -365,6 +367,7 @@ contract BlueprintManagerTest is Test {
 		BlueprintCall[] memory calls = new BlueprintCall[](1);
 		calls[0] = BlueprintCall(
 			from,
+			0,
 			address(basket),
 			abi.encode(
 				true,

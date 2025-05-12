@@ -135,6 +135,7 @@ contract PredictionTest is Test {
 		BlueprintCall[] memory calls = new BlueprintCall[](1);
 		calls[0] = BlueprintCall(
 			address(this),
+			0,
 			address(prediction),
 			data,
 			0

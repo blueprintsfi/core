@@ -242,6 +242,7 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 
 		bool checkApprovals;
 		address sender = call.sender;
+		uint256 subaccount = call.subaccount;
 		if (sender == address(0)) {
 			// no override
 			sender = msg.sender;
@@ -263,7 +264,7 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 			senderClue = addUserCreditWithClue(
 				senderSession,
 				senderClue,
-				HashLib.hash(HashLib.hash(blueprint, mint[i].tokenId), 0),
+				HashLib.hash(HashLib.hash(blueprint, mint[i].tokenId), subaccount),
 				mint[i].amount
 			);
 		}
@@ -275,7 +276,7 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 			if (checkApprovals)
 				_decreaseApproval(sender, tokenId, amount);
 
-			senderClue = addUserDebitWithClue(senderSession, senderClue, HashLib.hash(tokenId, 0), amount);
+			senderClue = addUserDebitWithClue(senderSession, senderClue, HashLib.hash(tokenId, subaccount), amount);
 		}
 
 		if (blueprint != sender && (give.length != 0 || take.length != 0)) {
@@ -284,8 +285,9 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 
 			for (uint256 i = 0; i < give.length; i++) {
 				uint256 id = HashLib.hash(give[i].tokenId, 0);
+				uint256 senderId = HashLib.hash(give[i].tokenId, subaccount);
 				uint256 amount = give[i].amount;
-				senderClue = addUserCreditWithClue(senderSession, senderClue, id, amount);
+				senderClue = addUserCreditWithClue(senderSession, senderClue, senderId, amount);
 				blueprintClue = addUserDebitWithClue(blueprintSession, blueprintClue, id, amount);
 			}
 
@@ -296,8 +298,9 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 				if (checkApprovals)
 					_decreaseApproval(sender, id, amount);
 
+				uint256 senderId = HashLib.hash(id, subaccount);
 				id = HashLib.hash(id, 0);
-				senderClue = addUserDebitWithClue(senderSession, senderClue, id, amount);
+				senderClue = addUserDebitWithClue(senderSession, senderClue, senderId, amount);
 				blueprintClue = addUserCreditWithClue(blueprintSession, blueprintClue, id, amount);
 			}
 			saveUserClue(blueprintSession, blueprintClue);
