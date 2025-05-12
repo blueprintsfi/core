@@ -11,6 +11,7 @@ interface IBlueprint {
 	/// @notice executes an action in Blueprint
 	/// @param action a description of the action being taken
 	function executeAction(bytes calldata action) external returns (
+		uint256 subaccount,
 		TokenOp[] memory mint,
 		TokenOp[] memory burn,
 		TokenOp[] memory give,

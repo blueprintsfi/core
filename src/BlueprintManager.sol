@@ -2,7 +2,13 @@
 pragma solidity 0.8.27;
 
 import { HashLib } from "./libraries/HashLib.sol";
-import { CalldataTokenOpArray, hashActionResults, getTokenOpArray, at } from "./libraries/CalldataTokenOp.sol";
+import {
+	CalldataTokenOpArray,
+	getSubaccount,
+	hashActionResults,
+	getTokenOpArray,
+	at
+} from "./libraries/CalldataTokenOp.sol";
 import { IBlueprint } from "./interfaces/IBlueprint.sol";
 import { IBlueprintManager, TokenOp, BlueprintCall } from "./interfaces/IBlueprintManager.sol";
 import {
@@ -246,14 +252,14 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 		(FlashUserSession senderSession, UserClue senderClue) =
 			initializeUserSession(session, sender);
 
-		(CalldataTokenOpArray arr, uint256 length) = getTokenOpArray(0x00);
+		(CalldataTokenOpArray arr, uint256 length) = getTokenOpArray(0x20);
 		for (uint256 i = 0; i < length; i++) {
 			(uint256 tokenId, uint256 amount) = arr.at(i);
 			tokenId = HashLib.hash(blueprint, tokenId);
 			senderClue = addUserCreditWithClue(senderSession, senderClue, subaccount, tokenId, amount);
 		}
 
-		(arr, length) = getTokenOpArray(0x20);
+		(arr, length) = getTokenOpArray(0x40);
 		for (uint256 i = 0; i < length; i++) {
 			(uint256 tokenId, uint256 amount) = arr.at(i);
 			tokenId = HashLib.hash(blueprint, tokenId);
@@ -263,16 +269,17 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 			senderClue = addUserDebitWithClue(senderSession, senderClue, subaccount, tokenId, amount);
 		}
 
-		(arr, length) = getTokenOpArray(0x40);
-		(CalldataTokenOpArray takeArr, uint256 takeLength) = getTokenOpArray(0x60);
+		(arr, length) = getTokenOpArray(0x60);
+		(CalldataTokenOpArray takeArr, uint256 takeLength) = getTokenOpArray(0x80);
 		if (blueprint != sender && (length != 0 || takeLength != 0)) {
+			uint256 blueprintSubaccount = getSubaccount();
 			(FlashUserSession blueprintSession, UserClue blueprintClue) =
 				initializeUserSession(session, blueprint);
 
 			for (uint256 i = 0; i < length; i++) {
 				(uint256 tokenId, uint256 amount) = arr.at(i);
 				senderClue = addUserCreditWithClue(senderSession, senderClue, subaccount, tokenId, amount);
-				blueprintClue = addUserDebitWithClue(blueprintSession, blueprintClue, 0, tokenId, amount);
+				blueprintClue = addUserDebitWithClue(blueprintSession, blueprintClue, blueprintSubaccount, tokenId, amount);
 			}
 
 			for (uint256 i = 0; i < takeLength; i++) {
@@ -281,7 +288,7 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 					_decreaseApproval(sender, tokenId, amount);
 
 				senderClue = addUserDebitWithClue(senderSession, senderClue, subaccount, tokenId, amount);
-				blueprintClue = addUserCreditWithClue(blueprintSession, blueprintClue, 0, tokenId, amount);
+				blueprintClue = addUserCreditWithClue(blueprintSession, blueprintClue, blueprintSubaccount, tokenId, amount);
 			}
 			saveUserClue(blueprintSession, blueprintClue);
 		}

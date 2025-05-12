@@ -10,6 +10,7 @@ contract NativeBlueprint is BasicBlueprint {
 		BasicBlueprint(_blueprintManager) {}
 
 	function executeAction(bytes calldata action) external onlyManager returns (
+		uint256,
 		TokenOp[] memory /*mint*/,
 		TokenOp[] memory /*burn*/,
 		TokenOp[] memory /*give*/,
@@ -22,7 +23,7 @@ contract NativeBlueprint is BasicBlueprint {
 		if (!success)
 			revert NativeTransferFailed();
 
-		return (zero(), oneOperationArray(0, amount), zero(), zero());
+		return (0, zero(), oneOperationArray(0, amount), zero(), zero());
 	}
 
 	function mint(address to) public payable {

@@ -25,7 +25,7 @@ function hashActionResults() pure returns (bytes32 res) {
 	assembly ("memory-safe") {
 		let ptr := mload(0x40)
 		let initPtr := ptr
-		returndatacopy(ptr, 0, 0x80)
+		returndatacopy(ptr, 0x20, 0x80)
 
 		for {let scratch := add(ptr, 0x80)} lt(ptr, scratch) {ptr := add(ptr, 0x20)} {
 			let retPtr := mload(ptr)
@@ -39,5 +39,12 @@ function hashActionResults() pure returns (bytes32 res) {
 		}
 
 		res := keccak256(initPtr, 0x80)
+	}
+}
+
+function getSubaccount() pure returns (uint256 subaccount) {
+	assembly ("memory-safe") {
+		returndatacopy(0, 0, 0x20)
+		subaccount := mload(0)
 	}
 }

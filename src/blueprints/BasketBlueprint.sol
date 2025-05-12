@@ -13,6 +13,7 @@ contract BasketBlueprint is BasicBlueprint {
 
 	// the onlyManager modifier is removed because it's a pure function
 	function executeAction(bytes calldata action) external pure returns (
+		uint256,
 		TokenOp[] memory /*mint*/,
 		TokenOp[] memory /*burn*/,
 		TokenOp[] memory /*give*/,
@@ -51,7 +52,7 @@ contract BasketBlueprint is BasicBlueprint {
 		TokenOp[] memory mintBurn = oneOperationArray(id, basket);
 
 		return wrap ?
-			(mintBurn, zero(), zero(), giveTake) :
-			(zero(), mintBurn, giveTake, zero());
+			(id, mintBurn, zero(), zero(), giveTake) :
+			(id, zero(), mintBurn, giveTake, zero());
 	}
 }

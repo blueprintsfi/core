@@ -8,7 +8,8 @@ import {gcd} from "../../libraries/Math.sol";
 contract MicroOptionBlueprint is BasicBlueprint {
 	constructor(IBlueprintManager manager) BasicBlueprint(manager) {}
 
-	function executeAction(bytes calldata action) external onlyManager returns (
+	function executeAction(bytes calldata action) external view /*onlyManager*/ returns (
+		uint256,
 		TokenOp[] memory /*mint*/,
 		TokenOp[] memory /*burn*/,
 		TokenOp[] memory /*give*/,
@@ -40,11 +41,8 @@ contract MicroOptionBlueprint is BasicBlueprint {
 		if (block.timestamp < expiry || mint)
 			mintBurn[1] = TokenOp(long, amount);
 
-		// send tokens to respective subaccount for reserve isolation
-		blueprintManager.subaccountFlashTransfer(mint ? 0 : long, mint ? long : 0, giveTake);
-
 		return mint ?
-			(mintBurn, zero(), zero(), giveTake) :
-			(zero(), mintBurn, giveTake, zero());
+			(long, mintBurn, zero(), zero(), giveTake) :
+			(long, zero(), mintBurn, giveTake, zero());
 	}
 }

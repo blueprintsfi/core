@@ -23,6 +23,7 @@ contract ComposablePredictionBlueprint is BasicBlueprint {
 	}
 
 	function executeAction(bytes calldata action) external view returns (
+		uint256,
 		TokenOp[] memory /*mint*/,
 		TokenOp[] memory /*burn*/,
 		TokenOp[] memory /*give*/,
@@ -88,8 +89,8 @@ contract ComposablePredictionBlueprint is BasicBlueprint {
 			initial = oneOperationArray(hash(params), collateralCount); // todo: hash straight from calldata
 
 		return merge ?
-			(initial, _final, giveTake, zero()) :
-			(_final, initial, zero(), giveTake);
+			(0, initial, _final, giveTake, zero()) :
+			(0, _final, initial, zero(), giveTake);
 	}
 
 	function hash(TokenParams calldata params) internal pure returns (uint256 result) {

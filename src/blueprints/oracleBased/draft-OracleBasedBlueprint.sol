@@ -24,6 +24,7 @@ contract OracleBasedLinearBlueprint is BasicBlueprint {
 	}
 
 	function executeAction(bytes calldata action) external onlyManager view returns (
+		uint256,
 		TokenOp[] memory /*mint*/,
 		TokenOp[] memory /*burn*/,
 		TokenOp[] memory /*give*/,
@@ -113,8 +114,8 @@ contract OracleBasedLinearBlueprint is BasicBlueprint {
 		}
 
 		return merge ?
-			(initial, _final, giveTake, zero()) :
-			(_final, initial, zero(), giveTake);
+			(0, initial, _final, giveTake, zero()) :
+			(0, _final, initial, zero(), giveTake);
 	}
 
 	function getId(TokenParams memory params) public pure returns (uint256 hash) {

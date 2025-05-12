@@ -25,6 +25,7 @@ contract ERC721Blueprint is BasicBlueprint, ERC721TokenReceiver {
 	}
 
 	function executeAction(bytes calldata action) external onlyManager returns (
+		uint256,
 		TokenOp[] memory /*mint*/,
 		TokenOp[] memory /*burn*/,
 		TokenOp[] memory /*give*/,
@@ -36,6 +37,7 @@ contract ERC721Blueprint is BasicBlueprint, ERC721TokenReceiver {
 		ERC721(erc721).transferFrom(address(this), to, id);
 
 		return (
+			0,
 			zero(),
 			oneOperationArray(HashLib.hash(erc721, id), 1),
 			zero(),

@@ -382,16 +382,11 @@ contract BlueprintManagerTest is Test {
 		for (uint256 i = 0; i < amounts.length; i++)
 			amounts[i] /= outputAmount;
 
-		uint256 id = HashLib.hash(
-			address(basket),
-			uint256(keccak256(abi.encodePacked(
-				ids,
-				amounts
-			)))
-		);
+		uint256 internalId = uint256(keccak256(abi.encodePacked(ids, amounts)));
+		uint256 id = HashLib.hash(address(basket), internalId);
 
-		assertEq(manager.balanceOf(address(basket), nativeId), amount0);
-		assertEq(manager.balanceOf(address(basket), erc20Id), amount1);
+		assertEq(manager.balanceOf(address(basket), /*subaccount*/ internalId, nativeId), amount0);
+		assertEq(manager.balanceOf(address(basket), /*subaccount*/ internalId, erc20Id), amount1);
 		assertEq(manager.balanceOf(from, id), outputAmount);
 	}
 

@@ -53,6 +53,7 @@ contract ERC1155Blueprint is BasicBlueprint, ERC1155TokenReceiver {
     }
 
 	function executeAction(bytes calldata action) external onlyManager returns (
+		uint256,
 		TokenOp[] memory /*mint*/,
 		TokenOp[] memory /*burn*/,
 		TokenOp[] memory /*give*/,
@@ -65,6 +66,7 @@ contract ERC1155Blueprint is BasicBlueprint, ERC1155TokenReceiver {
 		ERC1155(erc1155).safeBatchTransferFrom(address(this), to, ids, amounts, data);
 
 		return (
+			0,
 			zero(),
 			getOperations(erc1155, ids, amounts),
 			zero(),

@@ -18,6 +18,7 @@ contract SimpleOptionBlueprint is BasicBlueprint {
 	constructor(IBlueprintManager manager) BasicBlueprint(manager) {}
 
 	function executeAction(bytes calldata action) external onlyManager returns (
+		uint256,
 		TokenOp[] memory /*mint*/,
 		TokenOp[] memory /*burn*/,
 		TokenOp[] memory /*give*/,
@@ -45,9 +46,6 @@ contract SimpleOptionBlueprint is BasicBlueprint {
 		if (mint || block.timestamp <= config.expiry)
 			mintBurn[1] = TokenOp(long, config.count);
 
-		// send tokens to respective subaccount for reserve isolation
-		blueprintManager.subaccountFlashTransfer(mint ? 0 : long, mint ? long : 0, giveTake);
-
 		// check whether the action has been allowed by the settler
 		if (block.timestamp > config.expiry && (block.timestamp <= config.settlement || mint)) {
 			uint256 remaining;
@@ -61,8 +59,8 @@ contract SimpleOptionBlueprint is BasicBlueprint {
 		}
 
 		return mint ?
-			(mintBurn, zero(), zero(), giveTake) :
-			(zero(), mintBurn, giveTake, zero());
+			(long, mintBurn, zero(), zero(), giveTake) :
+			(long, zero(), mintBurn, giveTake, zero());
 	}
 
 	function allowActions(uint256 count) external {

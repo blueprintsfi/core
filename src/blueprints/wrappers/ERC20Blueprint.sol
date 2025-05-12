@@ -71,6 +71,7 @@ contract ERC20Blueprint is BasicBlueprint {
 	}
 
 	function executeAction(bytes calldata action) external onlyManager returns (
+		uint256,
 		TokenOp[] memory /*mint*/,
 		TokenOp[] memory /*burn*/,
 		TokenOp[] memory /*give*/,
@@ -82,6 +83,7 @@ contract ERC20Blueprint is BasicBlueprint {
 		SafeTransferLib.safeTransfer(ERC20(erc20), to, amount);
 
 		return (
+			0,
 			zero(),
 			oneOperationArray(uint256(uint160(erc20)), amount),
 			zero(),
