@@ -2,6 +2,7 @@
 pragma solidity 0.8.27;
 
 import { HashLib } from "./libraries/HashLib.sol";
+import { CalldataTokenOpArray, hashActionResults, getTokenOpArray, at } from "./libraries/CalldataTokenOp.sol";
 import { IBlueprint } from "./interfaces/IBlueprint.sol";
 import { IBlueprintManager, TokenOp, BlueprintCall } from "./interfaces/IBlueprintManager.sol";
 import {
@@ -11,6 +12,8 @@ import {
 	FlashUserSession,
 	UserClue
 } from "./FlashAccounting.sol";
+
+using { at } for CalldataTokenOpArray;
 
 contract BlueprintManager is FlashAccounting, IBlueprintManager {
 	error InvalidChecksum();
@@ -219,19 +222,13 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 			_flashCook(calls[k], session);
 	}
 
-	function _executeAction(BlueprintCall calldata call) internal returns (
-		TokenOp[] memory mint,
-		TokenOp[] memory burn,
-		TokenOp[] memory give,
-		TokenOp[] memory take
-	) {
+	function _executeAction(BlueprintCall calldata call) internal {
 		// optimistically ask for execution
-		(mint, burn, give, take) = IBlueprint(call.blueprint).executeAction(call.action);
+		IBlueprint(call.blueprint).executeAction(call.action);
 
 		if (call.checksum != 0) {
 			// we read mint, burn, give, take directly from returndata
-			bytes32 expected = HashLib.hashActionResults();
-
+			bytes32 expected = hashActionResults();
 			if (call.checksum != expected)
 				revert InvalidChecksum();
 		}
@@ -250,28 +247,26 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 			checkApprovals = true;
 		}
 
-		(
-			TokenOp[] memory mint,
-			TokenOp[] memory burn,
-			TokenOp[] memory give,
-			TokenOp[] memory take
-		) = _executeAction(call);
+		_executeAction(call);
 
 		(FlashUserSession senderSession, UserClue senderClue) =
 			initializeUserSession(session, sender);
 
-		for (uint256 i = 0; i < mint.length; i++) {
+		(CalldataTokenOpArray arr, uint256 length) = getTokenOpArray(0x00);
+		for (uint256 i = 0; i < length; i++) {
+			(uint256 tokenId, uint256 amount) = arr.at(i);
 			senderClue = addUserCreditWithClue(
 				senderSession,
 				senderClue,
-				HashLib.hash(HashLib.hash(blueprint, mint[i].tokenId), subaccount),
-				mint[i].amount
+				HashLib.hash(HashLib.hash(blueprint, tokenId), subaccount),
+				amount
 			);
 		}
 
-		for (uint256 i = 0; i < burn.length; i++) {
-			uint256 tokenId = HashLib.hash(blueprint, burn[i].tokenId);
-			uint256 amount = burn[i].amount;
+		(arr, length) = getTokenOpArray(0x20);
+		for (uint256 i = 0; i < length; i++) {
+			(uint256 tokenId, uint256 amount) = arr.at(i);
+			tokenId = HashLib.hash(blueprint, tokenId);
 
 			if (checkApprovals)
 				_decreaseApproval(sender, tokenId, amount);
@@ -279,29 +274,29 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 			senderClue = addUserDebitWithClue(senderSession, senderClue, HashLib.hash(tokenId, subaccount), amount);
 		}
 
-		if (blueprint != sender && (give.length != 0 || take.length != 0)) {
+		(arr, length) = getTokenOpArray(0x40);
+		(CalldataTokenOpArray takeArr, uint256 takeLength) = getTokenOpArray(0x60);
+		if (blueprint != sender && (length != 0 || takeLength != 0)) {
 			(FlashUserSession blueprintSession, UserClue blueprintClue) =
 				initializeUserSession(session, blueprint);
 
-			for (uint256 i = 0; i < give.length; i++) {
-				uint256 id = HashLib.hash(give[i].tokenId, 0);
-				uint256 senderId = HashLib.hash(give[i].tokenId, subaccount);
-				uint256 amount = give[i].amount;
+			for (uint256 i = 0; i < length; i++) {
+				(uint256 tokenId, uint256 amount) = arr.at(i);
+				uint256 id = HashLib.hash(tokenId, 0);
+				uint256 senderId = HashLib.hash(tokenId, subaccount);
 				senderClue = addUserCreditWithClue(senderSession, senderClue, senderId, amount);
 				blueprintClue = addUserDebitWithClue(blueprintSession, blueprintClue, id, amount);
 			}
 
-			for (uint256 i = 0; i < take.length; i++) {
-				uint256 id = take[i].tokenId;
-				uint256 amount = take[i].amount;
-
+			for (uint256 i = 0; i < takeLength; i++) {
+				(uint256 tokenId, uint256 amount) = takeArr.at(i);
 				if (checkApprovals)
-					_decreaseApproval(sender, id, amount);
+					_decreaseApproval(sender, tokenId, amount);
 
-				uint256 senderId = HashLib.hash(id, subaccount);
-				id = HashLib.hash(id, 0);
+				uint256 senderId = HashLib.hash(tokenId, subaccount);
+				tokenId = HashLib.hash(tokenId, 0);
 				senderClue = addUserDebitWithClue(senderSession, senderClue, senderId, amount);
-				blueprintClue = addUserCreditWithClue(blueprintSession, blueprintClue, id, amount);
+				blueprintClue = addUserCreditWithClue(blueprintSession, blueprintClue, tokenId, amount);
 			}
 			saveUserClue(blueprintSession, blueprintClue);
 		}
