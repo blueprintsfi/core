@@ -124,9 +124,11 @@ abstract contract FlashAccounting is IFlashAccounting {
 	function addUserCreditWithClue(
 		FlashUserSession userSession,
 		UserClue userClue,
+		uint256 subaccount,
 		uint256 id,
 		uint256 amount
 	) internal returns (UserClue) {
+		id = HashLib.hash(id, subaccount);
 		uint256 deltaSlot = HashLib.hash(id, FlashUserSession.unwrap(userSession));
 		int256 deltaVal = FlashAccountingLib.addFlashValue(deltaSlot, amount);
 
@@ -152,9 +154,11 @@ abstract contract FlashAccounting is IFlashAccounting {
 	function addUserDebitWithClue(
 		FlashUserSession userSession,
 		UserClue userClue,
+		uint256 subaccount,
 		uint256 id,
 		uint256 amount
 	) internal returns (UserClue) {
+		id = HashLib.hash(id, subaccount);
 		uint256 deltaSlot = HashLib.hash(id, FlashUserSession.unwrap(userSession));
 		int256 deltaVal = FlashAccountingLib.subtractFlashValue(deltaSlot, amount);
 
