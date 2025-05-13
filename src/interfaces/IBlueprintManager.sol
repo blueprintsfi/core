@@ -65,6 +65,13 @@ interface IBlueprintManager is IFlashAccounting {
 		uint256 toSubaccount,
 		TokenOp[] calldata ops
 	) external returns (bool);
+	function tryFlashTransferFrom(
+		address from,
+		uint256 fromSubaccount,
+		address to,
+		uint256 toSubaccount,
+		TokenOp[] calldata ops
+	) external returns (bool);
 	function approve(address spender, uint256 id, uint256 amount) external returns (bool);
 	function setOperator(address operator, bool approved) external returns (bool);
 	function credit(uint256 id, uint256 amount) external;
