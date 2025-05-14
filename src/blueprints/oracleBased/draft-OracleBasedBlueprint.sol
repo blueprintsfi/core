@@ -1,7 +1,7 @@
 // // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import {BasicBlueprint, TokenOp, IBlueprintManager} from "../BasicBlueprint.sol";
+import {BasicBlueprint, TokenOp, IBlueprintManager, zero, oneOpArray} from "../BasicBlueprint.sol";
 import {IOracle} from "./oracle/IOracle.sol";
 
 struct TokenParams {
@@ -19,7 +19,7 @@ enum Action {VerticalSplit, SlopeSplit, Settlement}
 contract OracleBasedLinearBlueprint is BasicBlueprint {
 	IOracle immutable constantOracle;
 
-	constructor(IBlueprintManager manager, IOracle oracle) BasicBlueprint(manager) {
+	constructor(IBlueprintManager _manager, IOracle oracle) BasicBlueprint(_manager) {
 		constantOracle = oracle;
 	}
 
@@ -69,12 +69,12 @@ contract OracleBasedLinearBlueprint is BasicBlueprint {
 			_final[1] = TokenOp(getId(params), count);
 
 			if (full) {
-				giveTake = oneOperationArray(params.tokenId, count * arg);
+				giveTake = oneOpArray(params.tokenId, count * arg);
 			} else {
 				params.slope = 0;
 				params.offset = 1;
 				params.denominator = 1;
-				initial = oneOperationArray(getId(params), count * arg);
+				initial = oneOpArray(getId(params), count * arg);
 			}
 		} else if (x == Action.VerticalSplit) { // vertical split x value is arg
 			// vertical split:
@@ -90,9 +90,9 @@ contract OracleBasedLinearBlueprint is BasicBlueprint {
 			// tokenId, feedId, SPLIT, endRange, slope, offset + (SPLIT - startRange) * slope, denominator   times count
 
 			if (full && params.slope == 0 && params.offset == 1 && params.denominator == 1)
-				giveTake = oneOperationArray(params.tokenId, count);
+				giveTake = oneOpArray(params.tokenId, count);
 			else
-				initial = oneOperationArray(getId(params), count);
+				initial = oneOpArray(getId(params), count);
 			uint256 endRange = params.endRange;
 			uint256 startRange = params.startRange;
 			require(startRange < arg && arg <= lastValue);
@@ -109,8 +109,8 @@ contract OracleBasedLinearBlueprint is BasicBlueprint {
 			_final[1] = TokenOp(getId(params), count);
 		} else {
 			uint256 value = valueAt(params, constantOracle.getReading(params.feedId, ""), lastValue);
-			giveTake = oneOperationArray(params.tokenId, count * value);
-			_final = oneOperationArray(getId(params), count);
+			giveTake = oneOpArray(params.tokenId, count * value);
+			_final = oneOpArray(getId(params), count);
 		}
 
 		return merge ?

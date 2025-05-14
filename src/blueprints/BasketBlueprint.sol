@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import {BasicBlueprint, TokenOp, IBlueprintManager} from "./BasicBlueprint.sol";
+import {BasicBlueprint, TokenOp, IBlueprintManager, zero, oneOpArray} from "./BasicBlueprint.sol";
 import {gcd} from "../libraries/Math.sol";
 
 contract BasketBlueprint is BasicBlueprint {
@@ -9,7 +9,7 @@ contract BasketBlueprint is BasicBlueprint {
 	error ZeroLength();
 	error ZeroAmount();
 
-	constructor(IBlueprintManager manager) BasicBlueprint(manager) {}
+	constructor(IBlueprintManager _manager) BasicBlueprint(_manager) {}
 
 	// the onlyManager modifier is removed because it's a pure function
 	function executeAction(bytes calldata action) external pure returns (
@@ -49,7 +49,7 @@ contract BasketBlueprint is BasicBlueprint {
 		// todo: gas bad
 		// todo: id is dependent on the order of tokens, should they be sorted?
 		uint256 id = uint256(keccak256(abi.encodePacked(ids, amounts)));
-		TokenOp[] memory mintBurn = oneOperationArray(id, basket);
+		TokenOp[] memory mintBurn = oneOpArray(id, basket);
 
 		return wrap ?
 			(id, mintBurn, zero(), zero(), giveTake) :

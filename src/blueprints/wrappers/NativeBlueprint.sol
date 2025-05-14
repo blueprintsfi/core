@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import {BasicBlueprint, TokenOp, IBlueprintManager} from "../BasicBlueprint.sol";
+import {BasicBlueprint, TokenOp, IBlueprintManager, zero, oneOpArray} from "../BasicBlueprint.sol";
 
 contract NativeBlueprint is BasicBlueprint {
 	error NativeTransferFailed();
 
-	constructor(IBlueprintManager _blueprintManager)
-		BasicBlueprint(_blueprintManager) {}
+	constructor(IBlueprintManager _manager) BasicBlueprint(_manager) {}
 
 	function executeAction(bytes calldata action) external onlyManager returns (
 		uint256,
@@ -23,10 +22,10 @@ contract NativeBlueprint is BasicBlueprint {
 		if (!success)
 			revert NativeTransferFailed();
 
-		return (0, zero(), oneOperationArray(0, amount), zero(), zero());
+		return (0, zero(), oneOpArray(0, amount), zero(), zero());
 	}
 
 	function mint(address to) public payable {
-		blueprintManager.mint(to, 0, msg.value);
+		manager.mint(to, 0, msg.value);
 	}
 }

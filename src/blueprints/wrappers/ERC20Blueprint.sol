@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import {BasicBlueprint, TokenOp, IBlueprintManager} from "../BasicBlueprint.sol";
+import {BasicBlueprint, TokenOp, IBlueprintManager, zero, oneOpArray} from "../BasicBlueprint.sol";
 import {SafeTransferLib, ERC20} from "solmate/utils/SafeTransferLib.sol";
 
 interface IERC1820Registry {
@@ -9,7 +9,7 @@ interface IERC1820Registry {
 }
 
 interface IDepositor {
-	function depositCallback(address erc20,bytes calldata callbackData) external;
+	function depositCallback(address erc20, bytes calldata callbackData) external;
 }
 
 interface IPermit2 {
@@ -66,7 +66,7 @@ contract ERC20Blueprint is BasicBlueprint {
 	address internal constant registry = 0x1820a4B7618BdE71Dce8cdc73aAB6C95905faD24;
 	IPermit2 public immutable permit2;
 
-	constructor(IBlueprintManager manager, IPermit2 _permit2) BasicBlueprint(manager) {
+	constructor(IBlueprintManager _manager, IPermit2 _permit2) BasicBlueprint(_manager) {
 		permit2 = _permit2;
 	}
 
@@ -85,7 +85,7 @@ contract ERC20Blueprint is BasicBlueprint {
 		return (
 			0,
 			zero(),
-			oneOperationArray(uint256(uint160(erc20)), amount),
+			oneOpArray(uint256(uint160(erc20)), amount),
 			zero(),
 			zero()
 		);
@@ -111,7 +111,7 @@ contract ERC20Blueprint is BasicBlueprint {
 			if (data.length == 32)
 				(from) = abi.decode(data, (address));
 
-			blueprintManager.mint(from, uint256(uint160(msg.sender)), amount);
+			manager.mint(from, uint256(uint160(msg.sender)), amount);
 		}
 	}
 
@@ -234,7 +234,7 @@ contract ERC20Blueprint is BasicBlueprint {
 		uint256 oldBalance = _getSavedBalance(erc20);
 		delta = newBalance - oldBalance;
 
-		blueprintManager.mint(to, toSubaccount, uint256(uint160(erc20)), delta);
+		manager.mint(to, toSubaccount, uint256(uint160(erc20)), delta);
 		_saveBalance(erc20, newBalance);
 	}
 

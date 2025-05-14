@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import {BasicBlueprint, TokenOp, IBlueprintManager} from "../BasicBlueprint.sol";
+import {BasicBlueprint, TokenOp, IBlueprintManager, zero, oneOpArray} from "../BasicBlueprint.sol";
 
 struct Config {
 	uint256 token0;
@@ -15,7 +15,7 @@ struct Config {
 }
 
 contract SimpleOptionBlueprint is BasicBlueprint {
-	constructor(IBlueprintManager manager) BasicBlueprint(manager) {}
+	constructor(IBlueprintManager _manager) BasicBlueprint(_manager) {}
 
 	function executeAction(bytes calldata action) external onlyManager returns (
 		uint256,
@@ -25,7 +25,7 @@ contract SimpleOptionBlueprint is BasicBlueprint {
 		TokenOp[] memory /*take*/
 	) {
 		(Config memory config, bool mint) = abi.decode(action, (Config, bool));
-		TokenOp[] memory giveTake = oneOperationArray(config.token0, config.num * config.count);
+		TokenOp[] memory giveTake = oneOpArray(config.token0, config.num * config.count);
 
 		uint256 short;
 		uint256 long;

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import {BasicBlueprint, TokenOp, IBlueprintManager} from "../BasicBlueprint.sol";
+import {BasicBlueprint, TokenOp, IBlueprintManager, zero, oneOpArray} from "../BasicBlueprint.sol";
 import {gcd} from "../../libraries/Math.sol";
 
 // it may leak value to arbitrageurs at expiry if the owner didn't excercise their option
 contract MicroOptionBlueprint is BasicBlueprint {
-	constructor(IBlueprintManager manager) BasicBlueprint(manager) {}
+	constructor(IBlueprintManager _manager) BasicBlueprint(_manager) {}
 
 	function executeAction(bytes calldata action) external view /*onlyManager*/ returns (
 		uint256,
@@ -18,7 +18,7 @@ contract MicroOptionBlueprint is BasicBlueprint {
 		(uint256 token0, uint256 token1, uint256 num, uint256 denom, uint256 expiry, bool mint) =
 			abi.decode(action, (uint256, uint256, uint256, uint256, uint256, bool));
 
-		TokenOp[] memory giveTake = oneOperationArray(token0, num);
+		TokenOp[] memory giveTake = oneOpArray(token0, num);
 
 		uint256 amount = gcd(num, denom);
 		(num, denom) = (num / amount, denom / amount);

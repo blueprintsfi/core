@@ -1,7 +1,7 @@
 // // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import {BasicBlueprint, TokenOp, IBlueprintManager} from "../BasicBlueprint.sol";
+import {BasicBlueprint, TokenOp, IBlueprintManager, zero, oneOpArray} from "../BasicBlueprint.sol";
 import {IOracle} from "./oracle/IOracle.sol";
 
 struct Constraint {
@@ -18,7 +18,7 @@ struct TokenParams {
 contract ComposablePredictionBlueprint is BasicBlueprint {
 	IOracle immutable constantOracle;
 
-	constructor(IBlueprintManager manager, IOracle oracle) BasicBlueprint(manager) {
+	constructor(IBlueprintManager _manager, IOracle oracle) BasicBlueprint(_manager) {
 		constantOracle = oracle;
 	}
 
@@ -79,14 +79,14 @@ contract ComposablePredictionBlueprint is BasicBlueprint {
 				uint256 reading = constantOracle.getReading(mergeFeed, "");
 				if (reading < cut || reading > lastValue)
 					collateralCount = 0;
-				_final = oneOperationArray(hashAdd(params, idx, mergeFeed, cut, end), count);
+				_final = oneOpArray(hashAdd(params, idx, mergeFeed, cut, end), count);
 			}
 		}
 
 		if (params.constraints.length == 0)
-			giveTake = oneOperationArray(params.tokenId, collateralCount);
+			giveTake = oneOpArray(params.tokenId, collateralCount);
 		else
-			initial = oneOperationArray(hash(params), collateralCount); // todo: hash straight from calldata
+			initial = oneOpArray(hash(params), collateralCount); // todo: hash straight from calldata
 
 		return merge ?
 			(0, initial, _final, giveTake, zero()) :

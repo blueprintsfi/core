@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import {BasicBlueprint, TokenOp, IBlueprintManager} from "../BasicBlueprint.sol";
+import {BasicBlueprint, TokenOp, IBlueprintManager, zero, oneOpArray} from "../BasicBlueprint.sol";
 import {HashLib} from "../../libraries/HashLib.sol";
 import {ERC721, ERC721TokenReceiver} from "solmate/tokens/ERC721.sol";
 
 contract ERC721Blueprint is BasicBlueprint, ERC721TokenReceiver {
-	constructor(IBlueprintManager manager) BasicBlueprint(manager) {}
+	constructor(IBlueprintManager _manager) BasicBlueprint(_manager) {}
 
 	function onERC721Received(
 		address /*operator*/,
@@ -19,7 +19,7 @@ contract ERC721Blueprint is BasicBlueprint, ERC721TokenReceiver {
 		if (data.length != 0)
 			to = abi.decode(data, (address));
 
-		blueprintManager.mint(to, HashLib.hash(msg.sender, tokenId), 1);
+		manager.mint(to, HashLib.hash(msg.sender, tokenId), 1);
 
 		return ERC721TokenReceiver.onERC721Received.selector;
 	}
@@ -39,7 +39,7 @@ contract ERC721Blueprint is BasicBlueprint, ERC721TokenReceiver {
 		return (
 			0,
 			zero(),
-			oneOperationArray(HashLib.hash(erc721, id), 1),
+			oneOpArray(HashLib.hash(erc721, id), 1),
 			zero(),
 			zero()
 		);
