@@ -77,16 +77,17 @@ contract ERC20Blueprint is BasicBlueprint {
 		TokenOp[] memory /*give*/,
 		TokenOp[] memory /*take*/
 	) {
-		(address erc20, address to, uint256 amount) =
-			abi.decode(action, (address, address, uint256));
+		(address erc20, address to, uint256 amount, bool fromSubaccount) =
+			abi.decode(action, (address, address, uint256, bool));
 
 		SafeTransferLib.safeTransfer(ERC20(erc20), to, amount);
 
+		TokenOp[] memory arr = oneOpArray(uint256(uint160(erc20)), amount);
 		return (
-			0,
+			uint256(uint160(to)), // doesn't matter if !fromSubaccount
 			zero(),
-			oneOpArray(uint256(uint160(erc20)), amount),
-			zero(),
+			arr,
+			fromSubaccount ? arr : zero(),
 			zero()
 		);
 	}

@@ -337,7 +337,8 @@ contract BlueprintManagerTest is Test {
 			abi.encode(
 				erc20,
 				to,
-				amount
+				amount,
+				false
 			),
 			bytes32(0)
 		);
