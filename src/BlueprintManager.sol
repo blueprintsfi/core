@@ -381,10 +381,21 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 		_burnZeroSubaccount(msg.sender, HashLib.hash(msg.sender, tokenId), amount);
 	}
 
+	function burn(uint256 subaccount, uint256 tokenId, uint256 amount) external {
+		_burn(msg.sender, HashLib.hash(HashLib.hash(msg.sender, tokenId), subaccount), amount);
+	}
+
 	function burn(TokenOp[] calldata ops) external {
 		uint256 len = ops.length;
 
 		for (uint256 i = 0; i < len; i++)
 			_burnZeroSubaccount(msg.sender, HashLib.hash(msg.sender, ops[i].tokenId), ops[i].amount);
+	}
+
+	function burn(uint256 subaccount, TokenOp[] calldata ops) external {
+		uint256 len = ops.length;
+
+		for (uint256 i = 0; i < len; i++)
+			_burn(msg.sender, HashLib.hash(HashLib.hash(msg.sender, ops[i].tokenId), subaccount), ops[i].amount);
 	}
 }
