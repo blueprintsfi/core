@@ -3,6 +3,7 @@ pragma solidity ^0.8.0;
 
 import {BasicBlueprint, TokenOp, IBlueprintManager, zero, oneOpArray} from "../BasicBlueprint.sol";
 import {SafeTransferLib, ERC20} from "solmate/utils/SafeTransferLib.sol";
+import {HashLib} from "../../libraries/HashLib.sol";
 
 interface IERC1820Registry {
 	function setInterfaceImplementer(address addr, bytes32 interfaceHash, address implementer) external;
@@ -82,12 +83,12 @@ contract ERC20Blueprint is BasicBlueprint {
 
 		SafeTransferLib.safeTransfer(ERC20(erc20), to, amount);
 
-		TokenOp[] memory arr = oneOpArray(uint256(uint160(erc20)), amount);
+		uint256 id = uint160(erc20);
 		return (
 			uint256(uint160(to)), // doesn't matter if !fromSubaccount
 			zero(),
-			arr,
-			fromSubaccount ? arr : zero(),
+			oneOpArray(id, amount),
+			fromSubaccount ? oneOpArray(HashLib.hash(address(this), id), amount) : zero(),
 			zero()
 		);
 	}
