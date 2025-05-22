@@ -24,12 +24,6 @@ contract FlashAccountingLibTest is Test {
 					continue;
 				Flash.subtractFlashValue(0, subtract[j++]);
 			}
-
-			int val; int preVal;
-			assembly {
-				val := tload(0)
-				preVal := tload(1)
-			}
 		}
 
 		uint256 _positive;
