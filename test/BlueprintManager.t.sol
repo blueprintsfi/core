@@ -117,6 +117,82 @@ contract BlueprintManagerTest is Test {
 		manager.cook(address(0), calls);
 	}
 
+	function test_neverOverflowingBalance_finalOverflow(
+		uint256[] memory add,
+		uint256[] memory subtract
+	) public {
+		test_neverOverflowingBalance(add, subtract, true);
+	}
+
+	function test_neverOverflowingBalance_finalNoOverflow(
+		uint256[] memory add,
+		uint256[] memory subtract
+	) public {
+		test_neverOverflowingBalance(add, subtract, false);
+	}
+
+	function test_neverOverflowingBalance(uint256[] memory add, uint256[] memory subtract, bool overflows) internal {
+		// vm.assume(add.length < 4);
+		// vm.assume(subtract.length < 4);
+		(uint256 i, uint256 j) = (0, 0);
+		bool res = true;
+		uint256 positive;
+		uint256 negative;
+		while (i != add.length || j != subtract.length) {
+			if (negative == 0 && j != subtract.length) {
+				negative += subtract[j++];
+			} else if (positive == 0 && i != add.length) {
+				positive += add[i++];
+			} else if (i != add.length) {
+				uint256 temp;
+				unchecked {
+					temp = positive + add[i++];
+					if (temp < positive) {
+						res = false;
+						break;
+					}
+					positive = temp;
+				}
+			} else {
+				uint256 temp;
+				unchecked {
+					temp = negative + subtract[j++];
+					if (temp < negative) {
+						res = false;
+						break;
+					}
+					negative = temp;
+				}
+			}
+
+			if (positive < negative) {
+				negative -= positive;
+				positive -= positive;
+			} else {
+				positive -= negative;
+				negative -= negative;
+			}
+		}
+
+		vm.assume(overflows != res);
+		vm.assume(negative == 0);
+
+		for (i = 0; i < add.length; i++) {
+			manager.mint(address(this), 0, add[i]);
+		}
+
+		for (i = 0; i < subtract.length; i++) {
+			manager.burn(0, subtract[i]);
+		}
+
+		assertEq(
+			manager.balanceOf(address(this), HashLib.hash(address(this), 0)),
+			res ? positive : type(uint256).max,
+			"incorrect balance after all operations"
+		);
+	}
+
+
 	// function getLinearCliffVestingPosition(
 	// 	uint256 id,
 	// 	uint256 total,
