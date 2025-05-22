@@ -43,6 +43,11 @@ interface IBlueprintManager is IFlashAccounting {
 	function mint(address to, TokenOp[] calldata ops) external;
 	function mint(address to, uint256 toSubaccount, TokenOp[] calldata ops) external;
 
+	function burn(uint256 tokenId, uint256 amount) external;
+	function burn(TokenOp[] calldata ops) external;
+	function burn(uint256 subaccount, uint256 tokenId, uint256 amount) external;
+	function burn(uint256 subaccount, TokenOp[] calldata ops) external;
+
 	function isOperator(address user, address operator) external view returns (bool);
 	function balanceOf(address user, uint256 tokenId) external view returns (uint256);
 	function balanceOf(address user, uint256 subaccount, uint256 tokenId) external view returns (uint256);
@@ -78,6 +83,4 @@ interface IBlueprintManager is IFlashAccounting {
 	function credit(TokenOp[] calldata ops) external;
 	function debit(uint256 id, uint256 amount) external;
 	function debit(TokenOp[] calldata ops) external;
-	function burn(uint256 tokenId, uint256 amount) external ;
-	function burn(TokenOp[] calldata ops) external;
 }
