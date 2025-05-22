@@ -20,8 +20,8 @@ uint256 constant _2_POW_254 = 1 << 254;
 uint256 constant _96_BIT_FLAG = (1 << 96) - 1;
 
 abstract contract FlashAccounting is IFlashAccounting {
-	function _mint(address to, uint256 id, uint256 amount) internal virtual;
-	function _burn(address from, uint256 id, uint256 amount) internal virtual;
+	function _mintInternal(address to, uint256 complexId, uint256 amount) internal virtual;
+	function _burnInternal(address from, uint256 complexId, uint256 amount) internal virtual;
 
 	error BalanceDeltaOverflow();
 	error NoFlashAccountingActive();
@@ -196,9 +196,9 @@ abstract contract FlashAccounting is IFlashAccounting {
 				FlashAccountingLib.readAndNullifyFlashValue(deltaSlot);
 
 			if (positive != 0)
-				_mint(user, id, positive);
+				_mintInternal(user, id, positive);
 			else if (negative != 0)
-				_burn(user, id, negative);
+				_burnInternal(user, id, negative);
 		}
 
 		assembly ("memory-safe") {

@@ -37,25 +37,25 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 		return balanceOf(user, 0, tokenId);
 	}
 
-	function _mint(address to, uint256 id, uint256 amount) internal override {
-		_balanceOf[to][id] += amount;
+	function _mintInternal(address to, uint256 complexId, uint256 amount) internal override {
+		_balanceOf[to][complexId] += amount;
 	}
 
-	function _burn(address from, uint256 id, uint256 amount) internal override {
-		_balanceOf[from][id] -= amount;
+	function _burnInternal(address from, uint256 complexId, uint256 amount) internal override {
+		_balanceOf[from][complexId] -= amount;
 	}
 
-	function _mintZeroSubaccount(address to, uint256 id, uint256 amount) internal {
-		_mint(to, HashLib.hash(id, 0), amount);
+	function _mint(address to, uint256 id, uint256 subaccount, uint256 amount) internal {
+		_mintInternal(to, HashLib.hash(id, subaccount), amount);
 	}
 
-	function _burnZeroSubaccount(address from, uint256 id, uint256 amount) internal {
-		_burn(from, HashLib.hash(id, 0), amount);
+	function _burn(address from, uint256 id, uint256 subaccount, uint256 amount) internal {
+		_burnInternal(from, HashLib.hash(id, subaccount), amount);
 	}
 
 	function _transferFrom(address from, address to, uint256 id, uint256 amount) internal {
-		_burnZeroSubaccount(from, id, amount);
-		_mintZeroSubaccount(to, id, amount);
+		_burn(from, id, 0, amount);
+		_mint(to, id, 0, amount);
 	}
 
 	function tryFlashTransferFrom(
@@ -89,8 +89,8 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 			(uint256 id, uint256 amount) = (op.tokenId, op.amount);
 			if (check)
 				_decreaseApproval(from, id, amount);
-			_burn(from, HashLib.hash(id, fromSubaccount), amount);
-			_mint(to, HashLib.hash(id, toSubaccount), amount);
+			_burn(from, id, fromSubaccount, amount);
+			_mint(to, id, toSubaccount, amount);
 		}
 
 		return true;
@@ -304,7 +304,7 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 		UserClue newUserClue = addUserDebitWithClue(userSession, userClue, 0, id, amount);
 		if (UserClue.unwrap(userClue) != UserClue.unwrap(newUserClue))
 			saveUserClue(userSession, newUserClue);
-		_mintZeroSubaccount(msg.sender, id, amount);
+		_mint(msg.sender, id, 0, amount);
 	}
 
 	function credit(TokenOp[] calldata ops) external {
@@ -319,7 +319,7 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 			uint256 id = op.tokenId;
 			uint256 amount = op.amount;
 			userClue = addUserDebitWithClue(userSession, userClue, 0, id, amount);
-			_mintZeroSubaccount(msg.sender, id, amount);
+			_mint(msg.sender, id, 0, amount);
 		}
 		saveUserClue(userSession, userClue);
 	}
@@ -334,7 +334,7 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 		UserClue newUserClue = addUserCreditWithClue(userSession, userClue, 0, id, amount);
 		if (UserClue.unwrap(userClue) != UserClue.unwrap(newUserClue))
 			saveUserClue(userSession, newUserClue);
-		_burn(msg.sender, id, amount);
+		_burn(msg.sender, id, 0, amount);
 	}
 
 	// todo: is this function useful at all?
@@ -350,52 +350,52 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 			uint256 id = op.tokenId;
 			uint256 amount = op.amount;
 			userClue = addUserCreditWithClue(userSession, userClue, 0, id, amount);
-			_burnZeroSubaccount(msg.sender, id, amount);
+			_burn(msg.sender, id, 0, amount);
 		}
 		saveUserClue(userSession, userClue);
 	}
 
 	function mint(address to, uint256 tokenId, uint256 amount) external {
-		_mintZeroSubaccount(to, HashLib.hash(msg.sender, tokenId), amount);
+		_mint(to, HashLib.hash(msg.sender, tokenId), 0, amount);
 	}
 
 	function mint(address to, uint256 toSubaccount, uint256 tokenId, uint256 amount) external {
-		_mint(to, HashLib.hash(HashLib.hash(msg.sender, tokenId), toSubaccount), amount);
+		_mint(to, HashLib.hash(msg.sender, tokenId), toSubaccount, amount);
 	}
 
 	function mint(address to, TokenOp[] calldata ops) external {
 		uint256 len = ops.length;
 
 		for (uint256 i = 0; i < len; i++)
-			_mintZeroSubaccount(to, HashLib.hash(msg.sender, ops[i].tokenId), ops[i].amount);
+			_mint(to, HashLib.hash(msg.sender, ops[i].tokenId), 0, ops[i].amount);
 	}
 
 	function mint(address to, uint256 toSubaccount, TokenOp[] calldata ops) external {
 		uint256 len = ops.length;
 
 		for (uint256 i = 0; i < len; i++)
-			_mint(to, HashLib.hash(HashLib.hash(msg.sender, ops[i].tokenId), toSubaccount), ops[i].amount);
+			_mint(to, HashLib.hash(msg.sender, ops[i].tokenId), toSubaccount, ops[i].amount);
 	}
 
 	function burn(uint256 tokenId, uint256 amount) external {
-		_burnZeroSubaccount(msg.sender, HashLib.hash(msg.sender, tokenId), amount);
+		_burn(msg.sender, HashLib.hash(msg.sender, tokenId), 0, amount);
 	}
 
 	function burn(uint256 subaccount, uint256 tokenId, uint256 amount) external {
-		_burn(msg.sender, HashLib.hash(HashLib.hash(msg.sender, tokenId), subaccount), amount);
+		_burn(msg.sender, HashLib.hash(msg.sender, tokenId), subaccount, amount);
 	}
 
 	function burn(TokenOp[] calldata ops) external {
 		uint256 len = ops.length;
 
 		for (uint256 i = 0; i < len; i++)
-			_burnZeroSubaccount(msg.sender, HashLib.hash(msg.sender, ops[i].tokenId), ops[i].amount);
+			_burn(msg.sender, HashLib.hash(msg.sender, ops[i].tokenId), 0, ops[i].amount);
 	}
 
 	function burn(uint256 subaccount, TokenOp[] calldata ops) external {
 		uint256 len = ops.length;
 
 		for (uint256 i = 0; i < len; i++)
-			_burn(msg.sender, HashLib.hash(HashLib.hash(msg.sender, ops[i].tokenId), subaccount), ops[i].amount);
+			_burn(msg.sender, HashLib.hash(msg.sender, ops[i].tokenId), subaccount, ops[i].amount);
 	}
 }
