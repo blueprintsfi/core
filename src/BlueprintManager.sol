@@ -21,16 +21,31 @@ import {
 
 using { at } for CalldataTokenOpArray;
 
+struct BalanceInfo {
+	uint256 lowBits;
+	uint256 highBits;
+}
+
 contract BlueprintManager is FlashAccounting, IBlueprintManager {
 	error InvalidChecksum();
 	error AccessDenied();
+	error InsufficientBalance();
 
 	mapping(address => mapping(address => bool)) public isOperator;
-	mapping(address => mapping(uint256 => uint256)) private _balanceOf;
+	mapping(address => mapping(uint256 => BalanceInfo)) private _balanceOf;
 	mapping(address => mapping(address => mapping(uint256 => uint256))) public allowance;
 
-	function balanceOf(address user, uint256 subaccount, uint256 tokenId) public view returns (uint256) {
-		return _balanceOf[user][HashLib.hash(tokenId, subaccount)];
+	function balanceOf(address user, uint256 subaccount, uint256 tokenId) public view returns (uint256 res) {
+		uint256 complexId = HashLib.hash(tokenId, subaccount);
+		BalanceInfo storage ptr = _balanceOf[user][complexId];
+		assembly ("memory-safe") {
+			res := sload(ptr.slot) // | 1 bit more | 255 bit uint255 val |
+			if slt(res, 0) { // whether we should read the next slot
+				if sub(sload(add(ptr.slot, 1)), 1) { // if carry is 1, res is already good
+					res := sub(0, 1) // return type(uint256).max
+				}
+			}
+		}
 	}
 
 	function balanceOf(address user, uint256 tokenId) public view returns (uint256 balance) {
@@ -38,11 +53,65 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 	}
 
 	function _mintInternal(address to, uint256 complexId, uint256 amount) internal override {
-		_balanceOf[to][complexId] += amount;
+		BalanceInfo storage ptr = _balanceOf[to][complexId];
+		uint256 int_max = uint(type(int256).max);
+		assembly ("memory-safe") {
+			let lsb := sload(ptr.slot) // | 1 bit more | 255 bit uint255 val |
+			let more := slt(lsb, 0) // whether we should read the next slot
+			let val := and(int_max, lsb) // uint255 val
+			let res := add(val, amount)
+			let msb := 0 // if we don't have to read msb, it's zero; else we'll read
+			switch gt(val, res)
+			case 0 { // not overflowing twice
+				switch slt(res, 0) // get first bit of res
+				case 0 { // no overflow
+					sstore(ptr.slot, add(lsb, amount)) // addition doesn't overflow and msb bit is maintained
+				} case 1 { // uint256 + uint255 overflow uint255 once
+					if more {
+						msb := sload(add(ptr.slot, 1))
+					}
+					sstore(ptr.slot, res) // first bit is already set to 1
+					sstore(add(ptr.slot, 1), add(msb, 1))
+				}
+			} case 1 { // uint256 + uint255 overflow uint255 twice
+				if more {
+					msb := sload(add(ptr.slot, 1))
+				}
+				sstore(ptr.slot, or(res, not(int_max))) // set the first bit
+				sstore(add(ptr.slot, 1), add(msb, 2))
+			}
+		}
 	}
 
 	function _burnInternal(address from, uint256 complexId, uint256 amount) internal override {
-		_balanceOf[from][complexId] -= amount;
+		BalanceInfo storage ptr = _balanceOf[from][complexId];
+		uint256 int_max = uint(type(int256).max);
+		assembly ("memory-safe") {
+			let lsb := sload(ptr.slot) // | 1 bit more | 255 bit uint255 val |
+			let more := slt(lsb, 0) // whether we should read the next slot
+			let val := and(int_max, lsb) // uint255 val
+			switch gt(amount, val)
+			case 0 { // not underflowing
+				sstore(ptr.slot, sub(lsb, amount)) // can't underflow, maintaining first bit of lsb
+			} case 1 { // underflowing
+				let res := sub(val, amount)
+				let first_bit := slt(res, 0)
+
+				let msb := 0
+				if more {
+					msb := sload(add(ptr.slot, 1))
+				}
+				let msb_res := sub(msb, sub(2, first_bit)) // subtract (res >> 255) ? 1 : 2
+
+				if gt(msb_res, msb) { // underflow
+					mstore(0, 0xf4d678b8) // bytes4(keccak256("InsufficientBalance()"))
+					revert(28, 4)
+				}
+				let change := shl(255, eq(iszero(msb_res), first_bit)) // flip the first bit
+				sstore(ptr.slot, xor(res, change))
+				sstore(add(ptr.slot, 1), msb_res)
+			}
+		}
 	}
 
 	function _mint(address to, uint256 id, uint256 subaccount, uint256 amount) internal {
