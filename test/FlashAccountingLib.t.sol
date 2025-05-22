@@ -11,7 +11,15 @@ contract FlashAccountingLibTest is Test {
 		return Flash.readAndNullifyFlashValue(0);
 	}
 
-	function test_correctResult(uint256[] memory add, uint256[] memory subtract) public {
+	function test_correctResult_exists(uint256[] memory add, uint256[] memory subtract) public {
+		test_correctResult(add, subtract, true);
+	}
+
+	function test_correctResult_doesntExist(uint256[] memory add, uint256[] memory subtract) public {
+		test_correctResult(add, subtract, false);
+	}
+
+	function test_correctResult(uint256[] memory add, uint256[] memory subtract, bool hasResult) internal {
 		uint256 i;
 		uint256 j;
 		while (i != add.length || j != subtract.length) {
@@ -76,6 +84,8 @@ contract FlashAccountingLibTest is Test {
 				negative -= negative;
 			}
 		}
+
+		vm.assume(res == hasResult);
 
 		assertEq(res, _res, "revert reasons incorrect");
 		if (res) {
