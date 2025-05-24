@@ -121,19 +121,29 @@ contract BlueprintManagerTest is Test {
 		uint256[] memory add,
 		uint256[] memory subtract
 	) public {
-		test_neverOverflowingBalance(add, subtract, true);
+		test_neverOverflowingBalance(add, subtract, true, false);
 	}
 
 	function test_neverOverflowingBalance_finalNoOverflow(
 		uint256[] memory add,
 		uint256[] memory subtract
 	) public {
-		test_neverOverflowingBalance(add, subtract, false);
+		test_neverOverflowingBalance(add, subtract, false, false);
 	}
 
-	function test_neverOverflowingBalance(uint256[] memory add, uint256[] memory subtract, bool overflows) internal {
-		// vm.assume(add.length < 4);
-		// vm.assume(subtract.length < 4);
+	function test_neverOverflowingBalance_finalNegativeRevert(
+		uint256[] memory add,
+		uint256[] memory subtract
+	) public {
+		test_neverOverflowingBalance(add, subtract, true, true);
+	}
+
+	function test_neverOverflowingBalance(
+		uint256[] memory add,
+		uint256[] memory subtract,
+		bool overflows,
+		bool negativeRevert
+	) internal {
 		(uint256 i, uint256 j) = (0, 0);
 		bool res = true;
 		uint256 positive;
@@ -175,14 +185,23 @@ contract BlueprintManagerTest is Test {
 		}
 
 		vm.assume(overflows != res);
-		vm.assume(negative == 0);
+		vm.assume((negative == 0) != negativeRevert);
 
 		for (i = 0; i < add.length; i++) {
 			manager.mint(address(this), 0, add[i]);
 		}
 
 		for (i = 0; i < subtract.length; i++) {
+			bool end = false;
+			if (negativeRevert) {
+				if (subtract[i] > manager.balanceOf(address(this), HashLib.hash(address(this), 0))) {
+					end = true;
+					vm.expectRevert(bytes4(keccak256("InsufficientBalance()")));
+				}
+			}
 			manager.burn(0, subtract[i]);
+			if (end)
+				return;
 		}
 
 		assertEq(
