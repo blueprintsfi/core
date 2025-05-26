@@ -195,7 +195,7 @@ library FlashAccountingLib {
 				}
 				default /* case 1 */ {
 					// add or subtract what we will add or subtract
-					delta := xor(delta, _2_POW_255)
+					delta := add(delta, _2_POW_255)
 					switch extension
 					case 1 {
 						positive := delta
