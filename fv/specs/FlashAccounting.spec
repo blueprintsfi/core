@@ -55,7 +55,7 @@ function currentValue(uint256 preimage) returns mathint {
 	if (extension) {
 		int val = to_int(tload(slot + 1));
 		// can cap due to computational infeasibility as proven by msbDoesntChangeByMoreThan2
-		require(val < 2 ^ 254 && val > - 2 ^ 254, "computationally infeasible"); // rough bounds
+		require(abs(val) < 2 ^ 254, "computationally infeasible"); // rough bounds
 		return lsb_int + val * 2 ^ 255;
 	}
 	return lsb_int;
