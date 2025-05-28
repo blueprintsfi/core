@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity 0.8.27;
+pragma solidity ^0.8.0;
 
 import {Test, console2} from "forge-std/Test.sol";
 import {BlueprintManager, TokenOp, BlueprintCall, HashLib} from "../src/BlueprintManager.sol";

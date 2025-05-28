@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity 0.8.27;
+pragma solidity 0.8.30;
 
 import { HashLib } from "./libraries/HashLib.sol";
 import {
@@ -13,18 +13,12 @@ import { IBlueprint } from "./interfaces/IBlueprint.sol";
 import { IBlueprintManager, TokenOp, BlueprintCall } from "./interfaces/IBlueprintManager.sol";
 import {
 	FlashAccounting,
-	FlashSession,
 	MainClue,
-	FlashUserSession,
-	UserClue
+	FlashSession,
+	SessionClue
 } from "./FlashAccounting.sol";
 
 using { at } for CalldataTokenOpArray;
-
-struct BalanceInfo {
-	uint256 lowBits;
-	uint256 highBits;
-}
 
 contract BlueprintManager is FlashAccounting, IBlueprintManager {
 	error InvalidChecksum();
@@ -32,99 +26,19 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 	error InsufficientBalance();
 
 	mapping(address => mapping(address => bool)) public isOperator;
-	mapping(address => mapping(uint256 => BalanceInfo)) private _balanceOf;
 	mapping(address => mapping(address => mapping(uint256 => uint256))) public allowance;
 
-	function balanceOf(address user, uint256 subaccount, uint256 tokenId) public view returns (uint256 res) {
-		uint256 complexId = HashLib.hash(tokenId, subaccount);
-		BalanceInfo storage ptr = _balanceOf[user][complexId];
-		assembly ("memory-safe") {
-			res := sload(ptr.slot) // | 1 bit more | 255 bit uint255 val |
-			if slt(res, 0) { // whether we should read the next slot
-				if sub(sload(add(ptr.slot, 1)), 1) { // if carry is 1, res is already good
-					res := sub(0, 1) // return type(uint256).max
-				}
-			}
-		}
+	function balanceOf(address user, uint256 subaccount, uint256 tokenId) public view returns (uint256) {
+		return _balanceOf(user, subaccount, tokenId);
 	}
 
-	function balanceOf(address user, uint256 tokenId) public view returns (uint256 balance) {
-		return balanceOf(user, 0, tokenId);
-	}
-
-	function _mintInternal(address to, uint256 complexId, uint256 amount) internal override {
-		BalanceInfo storage ptr = _balanceOf[to][complexId];
-		uint256 int_max = uint(type(int256).max);
-		assembly ("memory-safe") {
-			let lsb := sload(ptr.slot) // | 1 bit more | 255 bit uint255 val |
-			let more := slt(lsb, 0) // whether we should read the next slot
-			let val := and(int_max, lsb) // uint255 val
-			let res := add(val, amount)
-			let msb := 0 // if we don't have to read msb, it's zero; else we'll read
-			switch gt(val, res)
-			case 0 { // not overflowing twice
-				switch slt(res, 0) // get first bit of res
-				case 0 { // no overflow
-					sstore(ptr.slot, add(lsb, amount)) // addition doesn't overflow and msb bit is maintained
-				} case 1 { // uint256 + uint255 overflow uint255 once
-					if more {
-						msb := sload(add(ptr.slot, 1))
-					}
-					sstore(ptr.slot, res) // first bit is already set to 1
-					sstore(add(ptr.slot, 1), add(msb, 1))
-				}
-			} case 1 { // uint256 + uint255 overflow uint255 twice
-				if more {
-					msb := sload(add(ptr.slot, 1))
-				}
-				sstore(ptr.slot, or(res, not(int_max))) // set the first bit
-				sstore(add(ptr.slot, 1), add(msb, 2))
-			}
-		}
-	}
-
-	function _burnInternal(address from, uint256 complexId, uint256 amount) internal override {
-		BalanceInfo storage ptr = _balanceOf[from][complexId];
-		uint256 int_max = uint(type(int256).max);
-		assembly ("memory-safe") {
-			let lsb := sload(ptr.slot) // | 1 bit more | 255 bit uint255 val |
-			let more := slt(lsb, 0) // whether we should read the next slot
-			let val := and(int_max, lsb) // uint255 val
-			switch gt(amount, val)
-			case 0 { // not underflowing
-				sstore(ptr.slot, sub(lsb, amount)) // can't underflow, maintaining first bit of lsb
-			} case 1 { // underflowing
-				let res := sub(val, amount)
-				let first_bit := slt(res, 0)
-
-				let msb := 0
-				if more {
-					msb := sload(add(ptr.slot, 1))
-				}
-				let msb_res := sub(msb, sub(2, first_bit)) // subtract (res >> 255) ? 1 : 2
-
-				if gt(msb_res, msb) { // underflow
-					mstore(0, 0xf4d678b8) // bytes4(keccak256("InsufficientBalance()"))
-					revert(28, 4)
-				}
-				let change := shl(255, eq(iszero(msb_res), first_bit)) // flip the first bit
-				sstore(ptr.slot, xor(res, change))
-				sstore(add(ptr.slot, 1), msb_res)
-			}
-		}
-	}
-
-	function _mint(address to, uint256 id, uint256 subaccount, uint256 amount) internal {
-		_mintInternal(to, HashLib.hash(id, subaccount), amount);
-	}
-
-	function _burn(address from, uint256 id, uint256 subaccount, uint256 amount) internal {
-		_burnInternal(from, HashLib.hash(id, subaccount), amount);
+	function balanceOf(address user,uint256 tokenId) public view returns (uint256) {
+		return _balanceOf(user, 0, tokenId);
 	}
 
 	function _transferFrom(address from, address to, uint256 id, uint256 amount) internal {
-		_burn(from, id, 0, amount);
-		_mint(to, id, 0, amount);
+		_burn(from, 0, id, amount);
+		_mint(to, 0, id, amount);
 	}
 
 	function tryFlashTransferFrom(
@@ -158,8 +72,8 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 			(uint256 id, uint256 amount) = (op.tokenId, op.amount);
 			if (check)
 				_decreaseApproval(from, id, amount);
-			_burn(from, id, fromSubaccount, amount);
-			_mint(to, id, toSubaccount, amount);
+			_burn(from, fromSubaccount, id, amount);
+			_mint(to, toSubaccount, id, amount);
 		}
 
 		return true;
@@ -177,37 +91,18 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 		if (check)
 			check = !isOperator[from][msg.sender];
 
-		(FlashUserSession fromSession, UserClue fromClue) =
-			initializeUserSession(session, from);
+		SessionClue clue = getSessionClue(session);
 
-		// can't cache two clues for the same user, so we have to consider cases
-		if (from != to) {
-			(FlashUserSession toSession, UserClue toClue) =
-				initializeUserSession(session, to);
+		for (uint256 i = 0; i < ops.length; i++) {
+			TokenOp calldata op = ops[i];
+			(uint256 id, uint256 amount) = (op.tokenId, op.amount);
+			if (check)
+				_decreaseApproval(from, id, amount);
 
-			for (uint256 i = 0; i < ops.length; i++) {
-				TokenOp calldata op = ops[i];
-				(uint256 id, uint256 amount) = (op.tokenId, op.amount);
-				if (check)
-					_decreaseApproval(from, id, amount);
-
-				fromClue = addUserDebitWithClue(fromSession, fromClue, fromSubaccount, id, amount);
-				toClue = addUserCreditWithClue(toSession, toClue, toSubaccount, id, amount);
-			}
-
-			saveUserClue(toSession, toClue);
-		} else {
-			for (uint256 i = 0; i < ops.length; i++) {
-				TokenOp calldata op = ops[i];
-				(uint256 id, uint256 amount) = (op.tokenId, op.amount);
-				if (check)
-					_decreaseApproval(from, id, amount);
-
-				fromClue = addUserDebitWithClue(fromSession, fromClue, fromSubaccount, id, amount);
-				fromClue = addUserCreditWithClue(fromSession, fromClue, toSubaccount, id, amount);
-			}
+			clue = addUserDebitWithClue(session, clue, getPtr(from, fromSubaccount, id), amount);
+			clue = addUserCreditWithClue(session, clue, getPtr(to, toSubaccount, id), amount);
 		}
-		saveUserClue(fromSession, fromClue);
+		saveSessionClue(session, clue);
 	}
 
 	function flashTransferFrom(
@@ -318,153 +213,141 @@ contract BlueprintManager is FlashAccounting, IBlueprintManager {
 
 		_executeAction(call);
 
-		(FlashUserSession senderSession, UserClue senderClue) =
-			initializeUserSession(session, sender);
+		SessionClue clue = getSessionClue(session);
 
-		(CalldataTokenOpArray arr, uint256 length) = getTokenOpArray(0x20);
+		(CalldataTokenOpArray arr, uint256 length) = getTokenOpArray(0x20); // mint
 		for (uint256 i = 0; i < length; i++) {
-			(uint256 tokenId, uint256 amount) = arr.at(i);
-			tokenId = HashLib.hash(blueprint, tokenId);
-			senderClue = addUserCreditWithClue(senderSession, senderClue, subaccount, tokenId, amount);
+			(uint256 id, uint256 amount) = arr.at(i);
+			id = HashLib.hash(blueprint, id);
+			clue = addUserCreditWithClue(session, clue, getPtr(sender, subaccount, id), amount);
 		}
 
-		(arr, length) = getTokenOpArray(0x40);
+		(arr, length) = getTokenOpArray(0x40); // burn
 		for (uint256 i = 0; i < length; i++) {
-			(uint256 tokenId, uint256 amount) = arr.at(i);
-			tokenId = HashLib.hash(blueprint, tokenId);
+			(uint256 id, uint256 amount) = arr.at(i);
+			id = HashLib.hash(blueprint, id);
 			if (checkApprovals)
-				_decreaseApproval(sender, tokenId, amount);
+				_decreaseApproval(sender, id, amount);
 
-			senderClue = addUserDebitWithClue(senderSession, senderClue, subaccount, tokenId, amount);
+			clue = addUserDebitWithClue(session, clue, getPtr(sender, subaccount, id), amount);
 		}
 
-		(arr, length) = getTokenOpArray(0x60);
-		(CalldataTokenOpArray takeArr, uint256 takeLength) = getTokenOpArray(0x80);
+		(arr, length) = getTokenOpArray(0x60); // give
+		(CalldataTokenOpArray takeArr, uint256 takeLength) = getTokenOpArray(0x80); // take
 		if (blueprint != sender && (length != 0 || takeLength != 0)) {
 			uint256 blueprintSubaccount = getSubaccount();
-			(FlashUserSession blueprintSession, UserClue blueprintClue) =
-				initializeUserSession(session, blueprint);
 
 			for (uint256 i = 0; i < length; i++) {
-				(uint256 tokenId, uint256 amount) = arr.at(i);
-				senderClue = addUserCreditWithClue(senderSession, senderClue, subaccount, tokenId, amount);
-				blueprintClue = addUserDebitWithClue(blueprintSession, blueprintClue, blueprintSubaccount, tokenId, amount);
+				(uint256 id, uint256 amount) = arr.at(i);
+				clue = addUserCreditWithClue(session, clue, getPtr(sender, subaccount, id), amount);
+				clue = addUserDebitWithClue(session, clue, getPtr(blueprint, blueprintSubaccount, id), amount);
 			}
 
 			for (uint256 i = 0; i < takeLength; i++) {
-				(uint256 tokenId, uint256 amount) = takeArr.at(i);
+				(uint256 id, uint256 amount) = takeArr.at(i);
 				if (checkApprovals)
-					_decreaseApproval(sender, tokenId, amount);
+					_decreaseApproval(sender, id, amount);
 
-				senderClue = addUserDebitWithClue(senderSession, senderClue, subaccount, tokenId, amount);
-				blueprintClue = addUserCreditWithClue(blueprintSession, blueprintClue, blueprintSubaccount, tokenId, amount);
+				clue = addUserDebitWithClue(session, clue, getPtr(sender, subaccount, id), amount);
+				clue = addUserCreditWithClue(session, clue, getPtr(blueprint, blueprintSubaccount, id), amount);
 			}
-			saveUserClue(blueprintSession, blueprintClue);
 		}
-		saveUserClue(senderSession, senderClue);
+		saveSessionClue(session, clue);
 	}
 
 	function credit(uint256 id, uint256 amount) external {
 		FlashSession session = getCurrentSession(true);
+		SessionClue clue = getSessionClue(session);
 
-		(FlashUserSession userSession, UserClue userClue) =
-			initializeUserSession(session, msg.sender);
+		SessionClue newClue = addUserDebitWithClue(session, clue, getPtr(msg.sender, 0, id), amount);
+		if (SessionClue.unwrap(clue) != SessionClue.unwrap(newClue))
+			saveSessionClue(session, newClue);
 
-		UserClue newUserClue = addUserDebitWithClue(userSession, userClue, 0, id, amount);
-		if (UserClue.unwrap(userClue) != UserClue.unwrap(newUserClue))
-			saveUserClue(userSession, newUserClue);
-		_mint(msg.sender, id, 0, amount);
+		_mint(msg.sender, 0, id, amount);
 	}
 
 	function credit(TokenOp[] calldata ops) external {
 		FlashSession session = getCurrentSession(true);
-
-		(FlashUserSession userSession, UserClue userClue) =
-			initializeUserSession(session, msg.sender);
+		SessionClue clue = getSessionClue(session);
 
 		uint256 len = ops.length;
 		for (uint256 i = 0; i < len; i++) {
 			TokenOp calldata op = ops[i];
-			uint256 id = op.tokenId;
-			uint256 amount = op.amount;
-			userClue = addUserDebitWithClue(userSession, userClue, 0, id, amount);
-			_mint(msg.sender, id, 0, amount);
+			(uint256 id, uint256 amount) = (op.tokenId, op.amount);
+			clue = addUserDebitWithClue(session, clue, getPtr(msg.sender, 0, id), amount);
+			_mint(msg.sender, 0, id, amount);
 		}
-		saveUserClue(userSession, userClue);
+		saveSessionClue(session, clue);
 	}
 
 	// todo: is this function useful at all?
 	function debit(uint256 id, uint256 amount) external {
 		FlashSession session = getCurrentSession(true);
+		SessionClue clue = getSessionClue(session);
 
-		(FlashUserSession userSession, UserClue userClue) =
-			initializeUserSession(session, msg.sender);
+		SessionClue newClue = addUserCreditWithClue(session, clue, getPtr(msg.sender, 0, id), amount);
+		if (SessionClue.unwrap(clue) != SessionClue.unwrap(newClue))
+			saveSessionClue(session, newClue);
 
-		UserClue newUserClue = addUserCreditWithClue(userSession, userClue, 0, id, amount);
-		if (UserClue.unwrap(userClue) != UserClue.unwrap(newUserClue))
-			saveUserClue(userSession, newUserClue);
-		_burn(msg.sender, id, 0, amount);
+		_burn(msg.sender, 0, id, amount);
 	}
 
 	// todo: is this function useful at all?
 	function debit(TokenOp[] calldata ops) external {
 		FlashSession session = getCurrentSession(true);
-
-		(FlashUserSession userSession, UserClue userClue) =
-			initializeUserSession(session, msg.sender);
+		SessionClue clue = getSessionClue(session);
 
 		uint256 len = ops.length;
 		for (uint256 i = 0; i < len; i++) {
 			TokenOp calldata op = ops[i];
-			uint256 id = op.tokenId;
-			uint256 amount = op.amount;
-			userClue = addUserCreditWithClue(userSession, userClue, 0, id, amount);
-			_burn(msg.sender, id, 0, amount);
+			(uint256 id, uint256 amount) = (op.tokenId, op.amount);
+			clue = addUserCreditWithClue(session, clue, getPtr(msg.sender, 0, id), amount);
+			_burn(msg.sender, 0, id, amount);
 		}
-		saveUserClue(userSession, userClue);
+		saveSessionClue(session, clue);
 	}
 
 	function mint(address to, uint256 tokenId, uint256 amount) external {
-		_mint(to, HashLib.hash(msg.sender, tokenId), 0, amount);
+		_mint(to, 0, HashLib.hash(msg.sender, tokenId), amount);
 	}
 
 	function mint(address to, uint256 toSubaccount, uint256 tokenId, uint256 amount) external {
-		_mint(to, HashLib.hash(msg.sender, tokenId), toSubaccount, amount);
+		_mint(to, toSubaccount, HashLib.hash(msg.sender, tokenId), amount);
 	}
 
 	function mint(address to, TokenOp[] calldata ops) external {
 		uint256 len = ops.length;
 
 		for (uint256 i = 0; i < len; i++)
-			_mint(to, HashLib.hash(msg.sender, ops[i].tokenId), 0, ops[i].amount);
+			_mint(to, 0, HashLib.hash(msg.sender, ops[i].tokenId), ops[i].amount);
 	}
 
 	function mint(address to, uint256 toSubaccount, TokenOp[] calldata ops) external {
 		uint256 len = ops.length;
 
 		for (uint256 i = 0; i < len; i++)
-			_mint(to, HashLib.hash(msg.sender, ops[i].tokenId), toSubaccount, ops[i].amount);
+			_mint(to, toSubaccount, HashLib.hash(msg.sender, ops[i].tokenId), ops[i].amount);
 	}
 
 	function burn(uint256 tokenId, uint256 amount) external {
-		_burn(msg.sender, HashLib.hash(msg.sender, tokenId), 0, amount);
+		_burn(msg.sender, 0, HashLib.hash(msg.sender, tokenId), amount);
 	}
 
 	function burn(uint256 subaccount, uint256 tokenId, uint256 amount) external {
-		_burn(msg.sender, HashLib.hash(msg.sender, tokenId), subaccount, amount);
+		_burn(msg.sender, subaccount, HashLib.hash(msg.sender, tokenId), amount);
 	}
 
 	function burn(TokenOp[] calldata ops) external {
 		uint256 len = ops.length;
 
 		for (uint256 i = 0; i < len; i++)
-			_burn(msg.sender, HashLib.hash(msg.sender, ops[i].tokenId), 0, ops[i].amount);
+			_burn(msg.sender, 0, HashLib.hash(msg.sender, ops[i].tokenId), ops[i].amount);
 	}
 
 	function burn(uint256 subaccount, TokenOp[] calldata ops) external {
 		uint256 len = ops.length;
 
 		for (uint256 i = 0; i < len; i++)
-			_burn(msg.sender, HashLib.hash(msg.sender, ops[i].tokenId), subaccount, ops[i].amount);
+			_burn(msg.sender, subaccount, HashLib.hash(msg.sender, ops[i].tokenId), ops[i].amount);
 	}
 }
