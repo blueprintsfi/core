@@ -14,9 +14,9 @@ contract AccountingHarness {
 		AccountingLib.subtractFlashValue(slot, amount);
 	}
 
-	function readAndNullifyFlashValue(uint256 slotPreimage) external returns (uint256 positive, uint256 negative) {
+	function readAndNullifyFlashValue(uint256 slotPreimage) external {
 		uint256 slot = hash(slotPreimage);
-		return AccountingLib.readAndNullifyFlashValue(slot);
+		AccountingLib.readAndNullifyFlashValue(slot);
 	}
 
 	function hash(uint256 val) public pure returns (uint256 res) {

@@ -5,14 +5,23 @@ library AccountingLib {
 	uint256 constant _2_POW_254 = 1 << 254;
 	uint256 constant _2_POW_255 = 1 << 255;
 	uint256 constant NEG_1 = (1 << 256) - 1;
+	uint256 constant INT_MAX = (1 << 255) - 1;
 
-	error BalanceDeltaOverflow();
+	error BalanceUnderflow();
+
+	function balanceOf(uint256 ptr) internal view returns (uint256 res) {
+		assembly ("memory-safe") {
+			res := sload(ptr) // | 1 bit more | 255 bit uint255 val |
+			if slt(res, 0) { // whether we should read the next slot
+				if sub(sload(add(ptr, 1)), 1) { // if carry is 1, res is already good
+					res := NEG_1 // return type(uint256).max
+				}
+			}
+		}
+	}
 
 	// returns the PREVIOUS deltaCal, from before the execution
-	function addFlashValue(
-		uint256 slot,
-		uint256 amount
-	) internal returns (int256 deltaVal) {
+	function addFlashValue(uint256 slot, uint256 amount) internal returns (int256 deltaVal) {
 		assembly ("memory-safe") {
 			// Structure: | int255 value | 1 bit extension |
 			deltaVal := tload(slot)
@@ -72,10 +81,7 @@ library AccountingLib {
 	}
 
 	// returns the PREVIOUS deltaVal, from before the execution
-	function subtractFlashValue(
-		uint256 slot,
-		uint256 amount
-	) internal returns (int256 deltaVal) {
+	function subtractFlashValue(uint256 slot, uint256 amount) internal returns (int256 deltaVal) {
 		assembly ("memory-safe") {
 			// Structure: | int255 value | 1 bit extension |
 			deltaVal := tload(slot)
@@ -134,86 +140,59 @@ library AccountingLib {
 		}
 	}
 
-	function readAndNullifyFlashValue(
-		uint256 slot
-	) internal returns (uint256 positive, uint256 negative) {
+	function readAndNullifyFlashValue(uint256 tslot, uint256 sslot) internal {
 		int256 delta;
 		assembly ("memory-safe") {
-			delta := tload(slot)
+			delta := tload(tslot)
 		}
 
 		if (delta == 0)
-			return (positive, negative);
+			return;
 
 		assembly ("memory-safe") {
-			function revertOverflow() {
-				// bytes4(keccak256("BalanceDeltaOverflow()"))
-				mstore(0, 0x778214eb)
-				revert(0x1c, 0x04)
+			let tcarry := and(delta, 1)
+			delta := sar(1, delta)
+			let lsb := sload(sslot)
+			let lsb_val := and(lsb, INT_MAX)
+			let sum := add(delta, lsb_val)
+			let carry := 0
+
+			switch shr(254, sum)
+			case 2 { // int255 + uint255 overflow
+				carry := 1
+				sum := sub(sum, _2_POW_255)
+			} case 3 { // int255 + uint255 underflow
+				carry := NEG_1
+				sum := add(sum, _2_POW_255)
+			} /* default // case 0-1 // {} */
+
+			if tcarry {
+				carry := add(carry, tload(add(tslot, 1)))
 			}
 
-			// optimistically clear the delta; this also clears the extension
-			// since it will be ignored with the last bit of delta zeroed
-			tstore(slot, 0)
-
-			switch and(delta, 1)
+			switch carry // by how much we have to modify the storage carry...
 			case 0 {
-				delta := sar(1, delta)
-				switch slt(delta, 0)
-				case 0 { // the value is nonnegative
-					positive := delta
+				sstore(sslot, or(and(lsb, _2_POW_255), sum))
+			} default /*nonzero*/ {
+				let msb_sslot := add(sslot, 1) // it's now msb
+				carry := add(carry, sload(msb_sslot)) // final carry
+				if slt(carry, 0) {
+					mstore(0, 0x0bce5a72) // bytes4(keccak256("BalanceUnderflow()"))
+					revert(0x1c, 0x04)
 				}
-				default /* case 1 */ {
-					negative := sub(0, delta)
-				}
+				sstore(msb_sslot, carry)
+				sstore(sslot, or(shl(255, iszero(iszero(carry))), sum))
 			}
-			default /* case 1 */ {
-				delta := sar(1, delta)
-				let extension := tload(add(slot, 1))
 
-				// revert if extension < -2 or extension > 2
-				if gt(add(extension, 2), 4) {
-					revertOverflow()
-				}
-
-				switch and(extension, 1)
-				case 0 {
-					switch extension
-					// case 0 is impossible since wouldn't reach this branch
-					case 2 {
-						if sgt(delta, NEG_1) {
-							revertOverflow()
-						}
-						positive := delta
-					}
-					default /* case -2 */ {
-						if slt(delta, 1) {
-							revertOverflow()
-						}
-						negative := sub(0, delta)
-					}
-				}
-				default /* case 1 */ {
-					// add or subtract what we will add or subtract
-					delta := add(delta, _2_POW_255)
-					switch extension
-					case 1 {
-						positive := delta
-					}
-					default /* case -1 */ {
-						negative := sub(0, delta)
-					}
-				}
-			}
+			tstore(tslot, 0) // this also clears the extension since it will be ignored
 		}
 	}
 
 	function _mintInternal(uint256 ptr, uint256 amount) internal {
-		uint256 int_max = uint(type(int256).max);
 		assembly ("memory-safe") {
 			let lsb := sload(ptr) // | 1 bit more | 255 bit uint255 val |
 			let more := slt(lsb, 0) // whether we should read the next slot
-			let val := and(int_max, lsb) // uint255 val
+			let val := and(INT_MAX, lsb) // uint255 val
 			let res := add(val, amount)
 			let msb := 0 // if we don't have to read msb, it's zero; else we'll read
 			switch gt(val, res)
@@ -232,18 +211,17 @@ library AccountingLib {
 				if more {
 					msb := sload(add(ptr, 1))
 				}
-				sstore(ptr, or(res, not(int_max))) // set the first bit
+				sstore(ptr, or(res, not(INT_MAX))) // set the first bit
 				sstore(add(ptr, 1), add(msb, 2))
 			}
 		}
 	}
 
 	function _burnInternal(uint256 ptr, uint256 amount) internal {
-		uint256 int_max = uint(type(int256).max);
 		assembly ("memory-safe") {
 			let lsb := sload(ptr) // | 1 bit more | 255 bit uint255 val |
 			let more := slt(lsb, 0) // whether we should read the next slot
-			let val := and(int_max, lsb) // uint255 val
+			let val := and(INT_MAX, lsb) // uint255 val
 			switch gt(amount, val)
 			case 0 { // not underflowing
 				sstore(ptr, sub(lsb, amount)) // can't underflow, maintaining first bit of lsb

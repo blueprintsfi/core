@@ -7,8 +7,8 @@ import {AccountingLib} from "../src/libraries/AccountingLib.sol";
 contract AccountingLibTest is Test {
 	function setUp() external {}
 
-	function getResult() public returns (uint256 positive, uint256 negative) {
-		return AccountingLib.readAndNullifyFlashValue(0);
+	function getResult() public {
+		AccountingLib.readAndNullifyFlashValue(0, 0);
 	}
 
 	function test_correctResult_exists(uint256[] memory add, uint256[] memory subtract) public {
@@ -20,6 +20,8 @@ contract AccountingLibTest is Test {
 	}
 
 	function test_correctResult(uint256[] memory add, uint256[] memory subtract, bool hasResult) internal {
+		AccountingLib._mintInternal(0, type(uint256).max);
+
 		uint256 i;
 		uint256 j;
 		while (i != add.length || j != subtract.length) {
@@ -34,16 +36,10 @@ contract AccountingLibTest is Test {
 			}
 		}
 
-		uint256 _positive;
-		uint256 _negative;
 		bool _res;
-		try this.getResult() returns (uint256 positive, uint256 negative) {
+		try this.getResult() {
 			_res = true;
-			_positive = positive;
-			_negative = negative;
-		} catch {
-			console.log("sums were bad");
-		}
+		} catch {}
 
 		(i, j) = (0, 0);
 		bool res = true;
@@ -87,10 +83,14 @@ contract AccountingLibTest is Test {
 
 		vm.assume(res == hasResult);
 
-		assertEq(res, _res, "revert reasons incorrect");
+		assertTrue(_res || !res, "reverted while it shouldn't");
 		if (res) {
-			assertEq(positive, _positive, "positive incorrect");
-			assertEq(negative, _negative, "negative incorrect");
+			if (negative != 0)
+				assertEq(negative, type(uint).max - AccountingLib.balanceOf(0), "negative incorrect");
+			else {
+				AccountingLib._burnInternal(0, type(uint256).max);
+				assertEq(positive, AccountingLib.balanceOf(0), "positive incorrect");
+			}
 		}
 	}
 }

@@ -45,15 +45,7 @@ abstract contract Accounting is IAccounting {
 	}
 
 	function _balanceOf(address user, uint256 subaccount, uint256 tokenId) internal view returns (uint256 res) {
-		uint256 ptr = getPtr(user, subaccount, tokenId);
-		assembly ("memory-safe") {
-			res := sload(ptr) // | 1 bit more | 255 bit uint255 val |
-			if slt(res, 0) { // whether we should read the next slot
-				if sub(sload(add(ptr, 1)), 1) { // if carry is 1, res is already good
-					res := sub(0, 1) // return type(uint256).max
-				}
-			}
-		}
+		return AccountingLib.balanceOf(getPtr(user, subaccount, tokenId));
 	}
 
 	function _mint(address to, uint256 subaccount, uint256 id, uint256 amount) internal {
@@ -111,21 +103,12 @@ abstract contract Accounting is IAccounting {
 				ptr := tload(add(session, i))
 			}
 
-			(uint256 positive, uint256 negative) =
-				AccountingLib.readAndNullifyFlashValue(hash(ptr, session));
-
-			if (positive != 0)
-				AccountingLib._mintInternal(ptr, positive);
-			else if (negative != 0)
-				AccountingLib._burnInternal(ptr, negative);
-
-			assembly ("memory-safe") {
-				// reset the session
-				tstore(session, 0)
-			}
+			AccountingLib.readAndNullifyFlashValue(hash(ptr, session), ptr);
 		}
 
 		assembly ("memory-safe") {
+			// reset the session
+			tstore(session, 0)
 			tstore(0, mainClue)
 		}
 	}

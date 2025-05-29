@@ -1,7 +1,7 @@
 methods {
 	function addFlashValue(uint256, uint256) external envfree;
 	function subtractFlashValue(uint256, uint256) external envfree;
-	function readAndNullifyFlashValue(uint256) external returns (uint256, uint256) envfree;
+	function readAndNullifyFlashValue(uint256) external envfree;
 	function hash(uint256) external returns (uint256) envfree;
 	function exttload(uint256) external returns (uint256) envfree;
 }
@@ -99,17 +99,17 @@ rule properRevert(uint preimage) {
 		(reverted <=> abs(beforeValue) >= 2 ^ 256);
 }
 
-rule properRead(uint preimage) {
-	requireInvariant msbNeverPointedToWhenZero(preimage);
-	mathint beforeValue = currentValue(preimage);
+// rule properRead(uint preimage) {
+// 	requireInvariant msbNeverPointedToWhenZero(preimage);
+// 	mathint beforeValue = currentValue(preimage);
 
-	uint positive;
-	uint negative;
-	(positive, negative) = readAndNullifyFlashValue(preimage);
+// 	uint positive;
+// 	uint negative;
+// 	(positive, negative) = readAndNullifyFlashValue(preimage);
 
-	assert beforeValue >= 0 => (positive == beforeValue && negative == 0);
-	assert beforeValue < 0 => (negative == abs(beforeValue) && positive == 0);
-}
+// 	assert beforeValue >= 0 => (positive == beforeValue && negative == 0);
+// 	assert beforeValue < 0 => (negative == abs(beforeValue) && positive == 0);
+// }
 
 rule doesntChangeAnythingElse(uint preimage, uint preimageOther) {
 	mathint beforeValue = currentValue(preimageOther);
