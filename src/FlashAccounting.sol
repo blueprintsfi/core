@@ -17,7 +17,6 @@ struct BalanceInfo {
 	uint256 highBits;
 }
 
-uint256 constant _2_POW_254 = 1 << 254;
 uint256 constant _96_BIT_FLAG = (1 << 96) - 1;
 
 function hash(uint256 ptr, FlashSession session) pure returns (uint256) {
@@ -58,71 +57,11 @@ abstract contract FlashAccounting is IFlashAccounting {
 	}
 
 	function _mint(address to, uint256 subaccount, uint256 id, uint256 amount) internal {
-		_mintInternal(getPtr(to, subaccount, id), amount);
+		FlashAccountingLib._mintInternal(getPtr(to, subaccount, id), amount);
 	}
 
 	function _burn(address from, uint256 subaccount, uint256 id, uint256 amount) internal {
-		_burnInternal(getPtr(from, subaccount, id), amount);
-	}
-
-	function _mintInternal(uint256 ptr, uint256 amount) internal {
-		uint256 int_max = uint(type(int256).max);
-		assembly ("memory-safe") {
-			let lsb := sload(ptr) // | 1 bit more | 255 bit uint255 val |
-			let more := slt(lsb, 0) // whether we should read the next slot
-			let val := and(int_max, lsb) // uint255 val
-			let res := add(val, amount)
-			let msb := 0 // if we don't have to read msb, it's zero; else we'll read
-			switch gt(val, res)
-			case 0 { // not overflowing twice
-				switch slt(res, 0) // get first bit of res
-				case 0 { // no overflow
-					sstore(ptr, add(lsb, amount)) // addition doesn't overflow and msb bit is maintained
-				} case 1 { // uint256 + uint255 overflow uint255 once
-					if more {
-						msb := sload(add(ptr, 1))
-					}
-					sstore(ptr, res) // first bit is already set to 1
-					sstore(add(ptr, 1), add(msb, 1))
-				}
-			} case 1 { // uint256 + uint255 overflow uint255 twice
-				if more {
-					msb := sload(add(ptr, 1))
-				}
-				sstore(ptr, or(res, not(int_max))) // set the first bit
-				sstore(add(ptr, 1), add(msb, 2))
-			}
-		}
-	}
-
-	function _burnInternal(uint256 ptr, uint256 amount) internal {
-		uint256 int_max = uint(type(int256).max);
-		assembly ("memory-safe") {
-			let lsb := sload(ptr) // | 1 bit more | 255 bit uint255 val |
-			let more := slt(lsb, 0) // whether we should read the next slot
-			let val := and(int_max, lsb) // uint255 val
-			switch gt(amount, val)
-			case 0 { // not underflowing
-				sstore(ptr, sub(lsb, amount)) // can't underflow, maintaining first bit of lsb
-			} case 1 { // underflowing
-				let res := sub(val, amount)
-				let first_bit := slt(res, 0)
-
-				let msb := 0
-				if more {
-					msb := sload(add(ptr, 1))
-				}
-				let msb_res := sub(msb, sub(2, first_bit)) // subtract (res >> 255) ? 1 : 2
-
-				if gt(msb_res, msb) { // underflow
-					mstore(0, 0xf4d678b8) // bytes4(keccak256("InsufficientBalance()"))
-					revert(28, 4)
-				}
-				let change := shl(255, eq(iszero(msb_res), first_bit)) // flip the first bit
-				sstore(ptr, xor(res, change))
-				sstore(add(ptr, 1), msb_res)
-			}
-		}
+		FlashAccountingLib._burnInternal(getPtr(from, subaccount, id), amount);
 	}
 
 	function getCurrentSession(bool mustBeActive) internal view returns (FlashSession session) {
@@ -176,9 +115,9 @@ abstract contract FlashAccounting is IFlashAccounting {
 				FlashAccountingLib.readAndNullifyFlashValue(hash(ptr, session));
 
 			if (positive != 0)
-				_mintInternal(ptr, positive);
+				FlashAccountingLib._mintInternal(ptr, positive);
 			else if (negative != 0)
-				_burnInternal(ptr, negative);
+				FlashAccountingLib._burnInternal(ptr, negative);
 
 			assembly ("memory-safe") {
 				// reset the session
