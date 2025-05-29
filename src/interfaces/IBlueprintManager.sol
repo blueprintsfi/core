@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import {IFlashAccounting} from "./IFlashAccounting.sol";
+import {IAccounting} from "./IAccounting.sol";
 
 struct TokenOp {
 	uint256 tokenId;
@@ -18,7 +18,7 @@ struct BlueprintCall {
 
 /// @title BlueprintManager's Interface
 /// @author Czar102
-interface IBlueprintManager is IFlashAccounting {
+interface IBlueprintManager is IAccounting {
 	/// @notice executes a series of calls to Blueprints
 	/// @param calls the set of calls to be made
 	/// @dev must either be the party represented in each of these calls,

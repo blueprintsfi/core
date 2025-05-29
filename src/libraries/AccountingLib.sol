@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
-library FlashAccountingLib {
+library AccountingLib {
 	uint256 constant _2_POW_254 = 1 << 254;
 	uint256 constant _2_POW_255 = 1 << 255;
 	uint256 constant NEG_1 = (1 << 256) - 1;

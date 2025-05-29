@@ -12,15 +12,15 @@ import {
 import { IBlueprint } from "./interfaces/IBlueprint.sol";
 import { IBlueprintManager, TokenOp, BlueprintCall } from "./interfaces/IBlueprintManager.sol";
 import {
-	FlashAccounting,
+	Accounting,
 	MainClue,
 	FlashSession,
 	SessionClue
-} from "./FlashAccounting.sol";
+} from "./Accounting.sol";
 
 using { at } for CalldataTokenOpArray;
 
-contract BlueprintManager is FlashAccounting, IBlueprintManager {
+contract BlueprintManager is Accounting, IBlueprintManager {
 	error InvalidChecksum();
 	error AccessDenied();
 	error InsufficientBalance();

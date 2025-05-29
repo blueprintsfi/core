@@ -2,13 +2,13 @@
 pragma solidity 0.8.27;
 
 import {Test, console} from "forge-std/Test.sol";
-import {FlashAccountingLib as Flash} from "../src/libraries/FlashAccountingLib.sol";
+import {AccountingLib} from "../src/libraries/AccountingLib.sol";
 
-contract FlashAccountingLibTest is Test {
+contract AccountingLibTest is Test {
 	function setUp() external {}
 
 	function getResult() public returns (uint256 positive, uint256 negative) {
-		return Flash.readAndNullifyFlashValue(0);
+		return AccountingLib.readAndNullifyFlashValue(0);
 	}
 
 	function test_correctResult_exists(uint256[] memory add, uint256[] memory subtract) public {
@@ -26,11 +26,11 @@ contract FlashAccountingLibTest is Test {
 			if (vm.randomBool()) {
 				if (i == add.length)
 					continue;
-				Flash.addFlashValue(0, add[i++]);
+				AccountingLib.addFlashValue(0, add[i++]);
 			} else {
 				if (j == subtract.length)
 					continue;
-				Flash.subtractFlashValue(0, subtract[j++]);
+				AccountingLib.subtractFlashValue(0, subtract[j++]);
 			}
 		}
 

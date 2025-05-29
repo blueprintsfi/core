@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
 
-import {FlashAccountingLib} from "./libraries/FlashAccountingLib.sol";
+import {AccountingLib} from "./libraries/AccountingLib.sol";
 import {HashLib} from "./libraries/HashLib.sol";
-import {IFlashAccounting} from "./interfaces/IFlashAccounting.sol";
+import {IAccounting} from "./interfaces/IAccounting.sol";
 
 // tload(0) before the execution of this function
 type MainClue is uint256;
@@ -23,7 +23,7 @@ function hash(uint256 ptr, FlashSession session) pure returns (uint256) {
 	return HashLib.hash(ptr, FlashSession.unwrap(session));
 }
 
-abstract contract FlashAccounting is IFlashAccounting {
+abstract contract Accounting is IAccounting {
 	mapping(address => mapping(uint256 => BalanceInfo)) private __balanceOf;
 
 	error BalanceDeltaOverflow();
@@ -57,11 +57,11 @@ abstract contract FlashAccounting is IFlashAccounting {
 	}
 
 	function _mint(address to, uint256 subaccount, uint256 id, uint256 amount) internal {
-		FlashAccountingLib._mintInternal(getPtr(to, subaccount, id), amount);
+		AccountingLib._mintInternal(getPtr(to, subaccount, id), amount);
 	}
 
 	function _burn(address from, uint256 subaccount, uint256 id, uint256 amount) internal {
-		FlashAccountingLib._burnInternal(getPtr(from, subaccount, id), amount);
+		AccountingLib._burnInternal(getPtr(from, subaccount, id), amount);
 	}
 
 	function getCurrentSession(bool mustBeActive) internal view returns (FlashSession session) {
@@ -112,12 +112,12 @@ abstract contract FlashAccounting is IFlashAccounting {
 			}
 
 			(uint256 positive, uint256 negative) =
-				FlashAccountingLib.readAndNullifyFlashValue(hash(ptr, session));
+				AccountingLib.readAndNullifyFlashValue(hash(ptr, session));
 
 			if (positive != 0)
-				FlashAccountingLib._mintInternal(ptr, positive);
+				AccountingLib._mintInternal(ptr, positive);
 			else if (negative != 0)
-				FlashAccountingLib._burnInternal(ptr, negative);
+				AccountingLib._burnInternal(ptr, negative);
 
 			assembly ("memory-safe") {
 				// reset the session
@@ -142,7 +142,7 @@ abstract contract FlashAccounting is IFlashAccounting {
 		uint256 ptr,
 		uint256 amount
 	) internal returns (SessionClue) {
-		int256 deltaVal = FlashAccountingLib.addFlashValue(hash(ptr, session), amount);
+		int256 deltaVal = AccountingLib.addFlashValue(hash(ptr, session), amount);
 
 		assembly ("memory-safe") {
 			// it means we may need to push the token
@@ -169,7 +169,7 @@ abstract contract FlashAccounting is IFlashAccounting {
 		uint256 ptr,
 		uint256 amount
 	) internal returns (SessionClue) {
-		int256 deltaVal = FlashAccountingLib.subtractFlashValue(hash(ptr, session), amount);
+		int256 deltaVal = AccountingLib.subtractFlashValue(hash(ptr, session), amount);
 
 		assembly ("memory-safe") {
 			// it means we may need to push the token

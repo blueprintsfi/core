@@ -1,22 +1,22 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import {FlashAccountingLib as Flash} from "../../src/libraries/FlashAccountingLib.sol";
+import {AccountingLib} from "../../src/libraries/AccountingLib.sol";
 
-contract FlashAccountingHarness {
+contract AccountingHarness {
 	function addFlashValue(uint256 slotPreimage, uint256 amount) external {
 		uint256 slot = hash(slotPreimage);
-		Flash.addFlashValue(slot, amount);
+		AccountingLib.addFlashValue(slot, amount);
 	}
 
 	function subtractFlashValue(uint256 slotPreimage, uint256 amount) external {
 		uint256 slot = hash(slotPreimage);
-		Flash.subtractFlashValue(slot, amount);
+		AccountingLib.subtractFlashValue(slot, amount);
 	}
 
 	function readAndNullifyFlashValue(uint256 slotPreimage) external returns (uint256 positive, uint256 negative) {
 		uint256 slot = hash(slotPreimage);
-		return Flash.readAndNullifyFlashValue(slot);
+		return AccountingLib.readAndNullifyFlashValue(slot);
 	}
 
 	function hash(uint256 val) public pure returns (uint256 res) {

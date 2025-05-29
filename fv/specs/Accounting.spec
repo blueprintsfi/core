@@ -40,7 +40,7 @@ rule msbDoesntChangeByMoreThan2(uint preimage) {
 
 	method f;
 	uint delta;
-	require !anyCallWithArgs(f, preimage, delta);
+	require(!anyCallWithArgs(f, preimage, delta), "reverting calls don't cause state changes");
 
 	uint afterValueNext = tload(slot + 1);
 	assert abs(to_int(afterValueNext)) - abs(to_int(beforeValueNext)) <= 2;
@@ -66,7 +66,7 @@ rule properChange(uint preimage) {
 
 	method f;
 	uint delta;
-	require !anyCallWithArgs(f, preimage, delta);
+	require(!anyCallWithArgs(f, preimage, delta), "reverting calls don't cause state changes");
 
 	mathint afterValue = currentValue(preimage);
 
@@ -112,12 +112,11 @@ rule properRead(uint preimage) {
 }
 
 rule doesntChangeAnythingElse(uint preimage, uint preimageOther) {
-	require preimage != preimageOther;
 	mathint beforeValue = currentValue(preimageOther);
 
 	method f;
 	uint delta;
 	anyCallWithArgs(f, preimage, delta);
 
-	assert currentValue(preimageOther) == beforeValue;
+	assert (preimage != preimageOther) => (currentValue(preimageOther) == beforeValue);
 }
