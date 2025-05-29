@@ -14,9 +14,19 @@ contract AccountingHarness {
 		AccountingLib.subtractFlashValue(slot, amount);
 	}
 
+	function mint(uint256 slotPreimage, uint256 amount) external {
+		uint256 slot = hash(slotPreimage);
+		AccountingLib._mintInternal(slot, amount);
+	}
+
+	function burn(uint256 slotPreimage, uint256 amount) external {
+		uint256 slot = hash(slotPreimage);
+		AccountingLib._burnInternal(slot, amount);
+	}
+
 	function readAndNullifyFlashValue(uint256 slotPreimage) external {
 		uint256 slot = hash(slotPreimage);
-		AccountingLib.readAndNullifyFlashValue(slot);
+		AccountingLib.readAndNullifyFlashValue(slot, slot);
 	}
 
 	function hash(uint256 val) public pure returns (uint256 res) {

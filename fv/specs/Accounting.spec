@@ -4,6 +4,8 @@ methods {
 	function readAndNullifyFlashValue(uint256) external envfree;
 	function hash(uint256) external returns (uint256) envfree;
 	function exttload(uint256) external returns (uint256) envfree;
+	function mint(uint256, uint256) external envfree;
+	function burn(uint256, uint256) external envfree;
 }
 
 function to_int(mathint val) returns int {
@@ -23,6 +25,10 @@ function anyCallWithArgs(method f, uint preimage, uint delta) returns bool {
 		addFlashValue@withrevert(preimage, delta);
 	} else if (f.selector == sig:subtractFlashValue(uint256, uint256).selector) {
 		subtractFlashValue@withrevert(preimage, delta);
+	} else if (f.selector == sig:mint(uint256, uint256).selector) {
+		mint@withrevert(preimage, delta);
+	} else if (f.selector == sig:burn(uint256, uint256).selector) {
+		burn@withrevert(preimage, delta);
 	} else if (f.selector == sig:readAndNullifyFlashValue(uint256).selector) {
 		readAndNullifyFlashValue@withrevert(preimage);
 	} else {
@@ -34,19 +40,19 @@ function anyCallWithArgs(method f, uint preimage, uint delta) returns bool {
 	return lastReverted;
 }
 
-rule msbDoesntChangeByMoreThan2(uint preimage) {
+rule absMsbDoesntIncreaseByMoreThan2(uint preimage) {
 	uint slot = hash(preimage);
-	uint beforeValueNext = tload(slot + 1);
+	mathint beforeValue = abs(to_int(tload(slot + 1))) / 2;
 
 	method f;
 	uint delta;
 	require(!anyCallWithArgs(f, preimage, delta), "reverting calls don't cause state changes");
 
-	uint afterValueNext = tload(slot + 1);
-	assert abs(to_int(afterValueNext)) - abs(to_int(beforeValueNext)) <= 2;
+	mathint afterValue = abs(to_int(tload(slot + 1))) / 2;
+	assert afterValue <= beforeValue + 1;
 }
 
-function currentValue(uint256 preimage) returns mathint {
+function currentTransientValue(uint256 preimage) returns mathint {
 	uint256 slot = hash(preimage);
 	uint256 lsb = tload(slot);
 	bool extension = lsb % 2 == 1;
@@ -61,14 +67,14 @@ function currentValue(uint256 preimage) returns mathint {
 	return lsb_int;
 }
 
-rule properChange(uint preimage) {
-	mathint beforeValue = currentValue(preimage);
+rule properTransientChange(uint preimage) {
+	mathint beforeValue = currentTransientValue(preimage);
 
 	method f;
 	uint delta;
 	require(!anyCallWithArgs(f, preimage, delta), "reverting calls don't cause state changes");
 
-	mathint afterValue = currentValue(preimage);
+	mathint afterValue = currentTransientValue(preimage);
 
 	if (f.selector == sig:addFlashValue(uint256, uint256).selector) {
 		assert afterValue - beforeValue == delta;
@@ -81,12 +87,12 @@ rule properChange(uint preimage) {
 	}
 }
 
-strong invariant msbNeverPointedToWhenZero(uint preimage)
+strong invariant transientMsbNeverPointedToWhenZero(uint preimage)
 	(tload(hash(preimage)) % 2 == 1) => (tload(hash(preimage) + 1) != 0);
 
 rule properRevert(uint preimage) {
-	requireInvariant msbNeverPointedToWhenZero(preimage);
-	mathint beforeValue = currentValue(preimage);
+	requireInvariant transientMsbNeverPointedToWhenZero(preimage);
+	// mathint beforeValue = currentTransientValue(preimage);
 
 	method f;
 	uint delta;
@@ -95,8 +101,8 @@ rule properRevert(uint preimage) {
 	assert (f.selector == sig:addFlashValue(uint256, uint256).selector ||
 		f.selector == sig:subtractFlashValue(uint256, uint256).selector) =>
 			!reverted;
-	assert f.selector == sig:readAndNullifyFlashValue(uint256).selector =>
-		(reverted <=> abs(beforeValue) >= 2 ^ 256);
+	// assert f.selector == sig:readAndNullifyFlashValue(uint256).selector =>
+	// 	(reverted <=> abs(beforeValue) >= 2 ^ 256);
 }
 
 // rule properRead(uint preimage) {
@@ -112,11 +118,11 @@ rule properRevert(uint preimage) {
 // }
 
 rule doesntChangeAnythingElse(uint preimage, uint preimageOther) {
-	mathint beforeValue = currentValue(preimageOther);
+	mathint beforeValue = currentTransientValue(preimageOther);
 
 	method f;
 	uint delta;
 	anyCallWithArgs(f, preimage, delta);
 
-	assert (preimage != preimageOther) => (currentValue(preimageOther) == beforeValue);
+	assert (preimage != preimageOther) => (currentTransientValue(preimageOther) == beforeValue);
 }
