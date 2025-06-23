@@ -12,6 +12,15 @@ strong invariant storageMsbNeverPointedToWhenZero(uint preimage)
 	(sload(hash(preimage)) / 2 ^ 255 == 1) <=> (sload(hash(preimage) + 1) != 0)
 	{ preserved { requireStorageAssumptions(preimage); } }
 
+// just so that we can require msg.value == 0 later on
+rule revertsWithNonzeroMsgValue() {
+	method f;
+	calldataarg args;
+	env e;
+	currentContract.f@withrevert(e, args);
+	assert (e.msg.value != 0) => lastReverted;
+}
+
 function anyCallWithArgs(method f, uint preimage, uint delta) returns bool {
 	calldataarg args;
 	env e;
