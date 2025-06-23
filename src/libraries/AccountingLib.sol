@@ -189,6 +189,9 @@ library AccountingLib {
 	}
 
 	function _mintInternal(uint256 ptr, uint256 amount) internal {
+		if (amount == 0)
+			return;
+
 		assembly ("memory-safe") {
 			let lsb := sload(ptr) // | 1 bit more | 255 bit uint255 val |
 			let more := slt(lsb, 0) // whether we should read the next slot
@@ -218,6 +221,9 @@ library AccountingLib {
 	}
 
 	function _burnInternal(uint256 ptr, uint256 amount) internal {
+		if (amount == 0)
+			return;
+
 		assembly ("memory-safe") {
 			let lsb := sload(ptr) // | 1 bit more | 255 bit uint255 val |
 			let more := slt(lsb, 0) // whether we should read the next slot
@@ -240,7 +246,7 @@ library AccountingLib {
 					revert(28, 4)
 				}
 				let change := shl(255, eq(iszero(msb_res), first_bit)) // flip the first bit
-				sstore(ptr, xor(res, change))
+				sstore(ptr, add(res, change)) // add = xor
 				sstore(add(ptr, 1), msb_res)
 			}
 		}
