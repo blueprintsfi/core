@@ -29,7 +29,12 @@ contract AccountingHarness {
 		AccountingLib.readAndNullifyFlashValue(slot, slot);
 	}
 
-	function hash(uint256 val) public pure returns (uint256 res) {
+	function balanceOf(uint256 slotPreimage) external returns (uint256) {
+		uint256 slot = hash(slotPreimage);
+		return AccountingLib.balanceOf(slot);
+	}
+
+	function hash(uint256 val) internal pure returns (uint256 res) {
 		assembly ("memory-safe") {
 			mstore(0, val)
 			res := keccak256(0, 0x20)
@@ -39,6 +44,12 @@ contract AccountingHarness {
 	function exttload(uint256 slot) external view returns (uint256 val) {
 		assembly {
 			val := tload(slot)
+		}
+	}
+
+	function extsload(uint256 slot) external view returns (uint256 val) {
+		assembly {
+			val := sload(slot)
 		}
 	}
 }
