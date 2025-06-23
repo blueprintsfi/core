@@ -140,7 +140,7 @@ library AccountingLib {
 		}
 	}
 
-	function readAndNullifyFlashValue(uint256 tslot, uint256 sslot) internal {
+	function settleFlashBalance(uint256 tslot, uint256 sslot) internal {
 		int256 delta;
 		assembly ("memory-safe") {
 			delta := tload(tslot)

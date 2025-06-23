@@ -3,7 +3,7 @@ using AccountingHelper as helper;
 methods {
 	function addFlashValue(uint256, uint256) external envfree;
 	function subtractFlashValue(uint256, uint256) external envfree;
-	function readAndNullifyFlashValue(uint256) external envfree;
+	function settleFlashBalance(uint256) external envfree;
 	function mint(uint256, uint256) external envfree;
 	function burn(uint256, uint256) external envfree;
 

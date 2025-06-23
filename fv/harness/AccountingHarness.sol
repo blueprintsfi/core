@@ -24,9 +24,9 @@ contract AccountingHarness {
 		AccountingLib._burnInternal(slot, amount);
 	}
 
-	function readAndNullifyFlashValue(uint256 slotPreimage) external {
+	function settleFlashBalance(uint256 slotPreimage) external {
 		uint256 slot = hash(slotPreimage);
-		AccountingLib.readAndNullifyFlashValue(slot, slot);
+		AccountingLib.settleFlashBalance(slot, slot);
 	}
 
 	function balanceOf(uint256 slotPreimage) external returns (uint256) {

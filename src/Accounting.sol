@@ -103,7 +103,7 @@ abstract contract Accounting is IAccounting {
 				ptr := tload(add(session, i))
 			}
 
-			AccountingLib.readAndNullifyFlashValue(hash(ptr, session), ptr);
+			AccountingLib.settleFlashBalance(hash(ptr, session), ptr);
 		}
 
 		assembly ("memory-safe") {

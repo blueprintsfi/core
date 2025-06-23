@@ -31,11 +31,11 @@ function anyCallWithArgs(method f, uint preimage, uint delta) returns bool {
 		f.selector == sig:subtractFlashValue(uint256, uint256).selector ||
 		f.selector == sig:mint(uint256, uint256).selector ||
 		f.selector == sig:burn(uint256, uint256).selector ||
-		f.selector == sig:readAndNullifyFlashValue(uint256).selector
+		f.selector == sig:settleFlashBalance(uint256).selector
 	) {
 		require(helper.getFirstArg@withrevert(e, args) == preimage, "pin preimage");
 		assert !lastReverted; // just in case, we don't want to miss violations
-		if (f.selector != sig:readAndNullifyFlashValue(uint256).selector) {
+		if (f.selector != sig:settleFlashBalance(uint256).selector) {
 			require(helper.getSecondArg@withrevert(e, args) == delta, "pin delta");
 			assert !lastReverted; // just in case, we don't want to miss violations
 		}
@@ -87,7 +87,7 @@ rule properStateChange(uint preimage) {
 	} else if (f.selector == sig:subtractFlashValue(uint256, uint256).selector) {
 		assert beforeTransientValue - afterTransientValue == delta;
 		assert beforeStorageValue == afterStorageValue;
-	} else if (f.selector == sig:readAndNullifyFlashValue(uint256).selector) {
+	} else if (f.selector == sig:settleFlashBalance(uint256).selector) {
 		assert afterTransientValue == 0;
 		assert afterStorageValue == beforeStorageValue + beforeTransientValue;
 	} else if (f.selector == sig:mint(uint256, uint256).selector) {
@@ -117,7 +117,7 @@ rule properRevert(uint preimage) {
 		f.selector == sig:subtractFlashValue(uint256, uint256).selector ||
 		f.selector == sig:mint(uint256, uint256).selector
 	) => !reverted;
-	assert f.selector == sig:readAndNullifyFlashValue(uint256).selector => (
+	assert f.selector == sig:settleFlashBalance(uint256).selector => (
 		reverted <=> beforeStorageValue + beforeTransientValue < 0
 	);
 	assert f.selector == sig:burn(uint256, uint256).selector => (

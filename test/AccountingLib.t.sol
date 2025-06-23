@@ -8,7 +8,7 @@ contract AccountingLibTest is Test {
 	function setUp() external {}
 
 	function getResult() public {
-		AccountingLib.readAndNullifyFlashValue(0, 0);
+		AccountingLib.settleFlashBalance(0, 0);
 	}
 
 	function test_correctResult_exists(uint256[] memory add, uint256[] memory subtract) public {
