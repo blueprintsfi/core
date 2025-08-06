@@ -448,6 +448,7 @@ contract BlueprintManagerTest is Test {
 	function test_basket(address from, uint256 amount0, uint256 amount1) public {
 		vm.assume(amount0 != 0);
 		vm.assume(amount1 != 0);
+		vm.assume(from != address(basket));
 		uint256 nativeId = test_wrapNative(from, amount0);
 		uint256 erc20Id = test_erc20Wrap(from, from, amount1);
 
