@@ -44,7 +44,7 @@ contract BlueprintManagerTest is Test {
 		uint256 balance = manager.balanceOf(to, id);
 
 		vm.assume(amount < address(this).balance);
-		native.mint{value: amount}(to);
+		native.mint{value: amount}(to, 0);
 
 		assertEq(balance + amount, manager.balanceOf(to, id));
 	}

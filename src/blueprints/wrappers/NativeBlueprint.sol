@@ -25,7 +25,7 @@ contract NativeBlueprint is BasicBlueprint {
 		return (0, zero(), oneOpArray(0, amount), zero(), zero());
 	}
 
-	function mint(address to) public payable {
-		manager.mint(to, 0, msg.value);
+	function mint(address to, uint256 subaccount) public payable {
+		manager.mint(to, subaccount, msg.value);
 	}
 }
