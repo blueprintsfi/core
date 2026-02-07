@@ -1,8 +1,8 @@
 // // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import {Test, console2, console} from "forge-std/Test.sol";
-import {BlueprintManager, TokenOp, BlueprintCall, HashLib} from "../src/BlueprintManager.sol";
+import {Test, console2} from "forge-std/Test.sol";
+import {BlueprintManager, BlueprintCall, HashLib} from "../src/BlueprintManager.sol";
 import {ConstantOracle} from "../src/blueprints/oracleBased/oracle/ConstantOracle.sol";
 import {ComposablePredictionBlueprint, Constraint, TokenParams} from "../src/blueprints/oracleBased/draft-ComposablePredictionBlueprint.sol";
 
