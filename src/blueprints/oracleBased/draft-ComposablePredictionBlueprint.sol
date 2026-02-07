@@ -133,7 +133,7 @@ contract ComposablePredictionBlueprint is BasicBlueprint {
 					lastValue = end - 1;
 				}
 
-				uint256 reading = constantOracle.getReading(mergeFeed, "");
+				uint256 reading = constantOracle.getReading(mergeFeed);
 				if (reading < cut || reading > lastValue)
 					collateralCount = 0;
 				_final = oneOpArray(hashAdd(params, idx, mergeFeed, cut, end), count);

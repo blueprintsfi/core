@@ -19,4 +19,8 @@ contract SimpleSignatureOracle is IOracle {
 		require(ecrecover(payload, v, r, s) == signer);
 		return response;
 	}
+
+	function getReading(bytes32) external pure returns (uint256) {
+		revert();
+	}
 }

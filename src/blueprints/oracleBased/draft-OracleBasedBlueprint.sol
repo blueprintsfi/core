@@ -108,7 +108,7 @@ contract OracleBasedLinearBlueprint is BasicBlueprint {
 				params.offset += (arg - startRange) * uint256(params.slope);
 			_final[1] = TokenOp(getId(params), count);
 		} else {
-			uint256 value = valueAt(params, constantOracle.getReading(params.feedId, ""), lastValue);
+			uint256 value = valueAt(params, constantOracle.getReading(params.feedId), lastValue);
 			giveTake = oneOpArray(params.tokenId, count * value);
 			_final = oneOpArray(getId(params), count);
 		}
