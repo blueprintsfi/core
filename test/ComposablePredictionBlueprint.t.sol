@@ -1,7 +1,7 @@
 // // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import {Test, console2} from "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 import {BlueprintManager, BlueprintCall, HashLib} from "../src/BlueprintManager.sol";
 import {ConstantOracle} from "../src/blueprints/oracleBased/oracle/ConstantOracle.sol";
 import {ComposablePredictionBlueprint, Constraint, TokenParams} from "../src/blueprints/oracleBased/draft-ComposablePredictionBlueprint.sol";
@@ -174,11 +174,6 @@ contract PredictionTest is Test {
 			params = params.setConstraint(constraint.feedId, start, 0);
 		}
 
-		console2.log("success");
-		console2.log(start);
-		console2.log(end);
-
-
 		if (end != 0)
 			mergeSplit(params, amount, constraint.feedId, end, false);
 	}
@@ -293,8 +288,6 @@ contract PredictionTest is Test {
 			split(params, amount, previousConstraints[i]);
 			params = params.setConstraint(previousConstraints[i]);
 		}
-
-		console2.log("done");
 
 		split(params, amount, Constraint(feed, cut1, cut2));
 		if (cut1 != 0)

@@ -22,6 +22,9 @@ contract ComposablePredictionBlueprint is BasicBlueprint {
 		constantOracle = oracle;
 	}
 
+	error InvalidCut();
+	error InvalidRange();
+
 	// This function has 4 utilities:
 	//   - split conditional token across some oracle feed; can include a feed
 	//     the token is independent of, or can split across a dependent feed
@@ -92,7 +95,8 @@ contract ComposablePredictionBlueprint is BasicBlueprint {
 		bool done = false;
 		while (idx < params.constraints.length) {
 			if (params.constraints[idx].feedId == mergeFeed) {
-				require(!settle, "must not be settling");
+				if (settle)
+					revert InvalidRange();
 				uint256 startRange = params.constraints[idx].startRange;
 				uint256 endRange = params.constraints[idx].endRange;
 				uint256 lastValue;
@@ -102,10 +106,12 @@ contract ComposablePredictionBlueprint is BasicBlueprint {
 				// the following check is implied by the next one, so commented out
 				// require(startRange <= lastValue);
 				// make sure that the cut is at a valid position within the range
-				require(startRange < cut && cut <= lastValue, "invalid cut");
+				if (startRange >= cut || cut > lastValue)
+					revert InvalidCut();
 				// startRange = endrange = 0 implies full range, which means that
 				// it shouldn't have been mentioned in the sontraints, so revert
-				require(startRange != endRange, "invalid range");
+				if (startRange == endRange)
+					revert InvalidRange();
 				// derive final tokens by replacing the respective ranges with
 				// newer, more constrained ones
 				_final[0] = TokenOp(hashReplace(params, idx, startRange, cut), count);
@@ -133,7 +139,8 @@ contract ComposablePredictionBlueprint is BasicBlueprint {
 				_final = oneOpArray(hashAdd(params, idx, mergeFeed, cut, end), count);
 			} else {
 				// if we're merging (or splitting), derive final (initial) tokenIds
-				require(cut != 0, "cut must be nonzero");
+				if (cut == 0)
+					revert InvalidCut();
 				_final[0] = TokenOp(hashAdd(params, idx, mergeFeed, 0, cut), count);
 				_final[1] = TokenOp(hashAdd(params, idx, mergeFeed, cut, 0), count);
 			}
