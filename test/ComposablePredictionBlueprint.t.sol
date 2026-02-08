@@ -265,7 +265,7 @@ contract PredictionTest is Test {
 		uint256 cut2
 	) public {
 		// We do a lot of memory operations, not limiting this will cause Memory OOG at about 400-500
-		vm.assume(previousConstraints.length < 50);
+		vm.assume(previousConstraints.length < 100);
 		vm.assume(amount < 1e9 ether);
 		vm.assume(cut1 != 0 && (cut1 < cut2 || (cut1 != 0 && cut2 == 0)));
 

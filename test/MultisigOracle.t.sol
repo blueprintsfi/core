@@ -96,7 +96,5 @@ contract MultisigOracleTest is Test {
 				vm.assertEq(oracle.getReading(feed), res[i].data);
 			}
 		}
-
-		// moracle.cache(3, new address[](0), new Response[](0));
 	}
 }

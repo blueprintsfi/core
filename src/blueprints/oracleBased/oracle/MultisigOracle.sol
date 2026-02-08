@@ -107,12 +107,6 @@ contract MultisigOracle is IOracle {
 	}
 
 	function getReading(bytes32 /*feedId*/, bytes calldata /*proof*/) external pure returns (uint256) {
-		// (uint8 v, bytes32 r, bytes32 s, uint256 response) =
-		// 	abi.decode(proof, (uint8, bytes32, bytes32, uint256));
-		// bytes32 payload = bytes32(HashLib.hash(uint256(feedId), response));
-
-		// require(ecrecover(payload, v, r, s) == signer);
-		// return response;
 		revert();
 	}
 

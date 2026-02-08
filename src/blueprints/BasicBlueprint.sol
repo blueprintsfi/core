@@ -27,6 +27,13 @@ function zero() pure returns (TokenOp[] memory z) {
 	}
 }
 
+function zeroCalldata() pure returns (TokenOp[] calldata z) {
+	assembly ("memory-safe") {
+		z.offset := 0
+		z.length := 0
+	}
+}
+
 function oneOpArray(uint256 tokenId, uint256 amount) pure returns (TokenOp[] memory res) {
 	assembly ("memory-safe") {
 		res := mload(0x40)

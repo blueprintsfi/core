@@ -17,7 +17,7 @@ struct Config {
 contract SimpleOptionBlueprint is BasicBlueprint {
 	constructor(IBlueprintManager _manager) BasicBlueprint(_manager) {}
 
-	function executeAction(bytes calldata action) external onlyManager returns (
+	function executeAction(bytes calldata action) external view /*onlyManager*/ returns (
 		uint256,
 		TokenOp[] memory /*mint*/,
 		TokenOp[] memory /*burn*/,
@@ -48,13 +48,12 @@ contract SimpleOptionBlueprint is BasicBlueprint {
 
 		// check whether the action has been allowed by the settler
 		if (block.timestamp > config.expiry && (block.timestamp <= config.settlement || mint)) {
-			uint256 remaining;
+			uint256 allowed;
 			assembly ("memory-safe") {
 				let slot := mload(add(config, 0xe0))
-				remaining := tload(slot)
-				tstore(slot, sub(remaining, 1)) // optimistically decrease permitted actions counter
+				allowed := tload(slot)
 			}
-			if (remaining == 0)
+			if (allowed == 0)
 				revert AccessDenied();
 		}
 
@@ -63,9 +62,9 @@ contract SimpleOptionBlueprint is BasicBlueprint {
 			(long, zero(), mintBurn, giveTake, zero());
 	}
 
-	function allowActions(uint256 count) external {
+	function allowActions(bool allowed) external {
 		assembly ("memory-safe") {
-			tstore(caller(), count)
+			tstore(caller(), allowed)
 		}
 	}
 }

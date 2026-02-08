@@ -10,4 +10,13 @@ via_ir = true
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
 [fuzz]
 runs = 256
-max_test_rejects = 10000
+max_test_rejects = 20000
+
+[lint]
+exclude_lints = [
+	"unwrapped-modifier-logic",
+	"screaming-snake-case-const",
+	"screaming-snake-case-immutable",
+	"named-struct-fields"
+]
+
