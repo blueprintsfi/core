@@ -19,4 +19,8 @@ library HashLib {
 			res := keccak256(0, 0x40)
 		}
 	}
+
+	function hash(bytes32 val0, bytes32 val1) internal pure returns (bytes32) {
+		return bytes32(hash(uint256(val0), uint256(val1)));
+	}
 }
