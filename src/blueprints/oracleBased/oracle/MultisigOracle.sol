@@ -72,12 +72,12 @@ contract MultisigOracle is IOracle {
 		bytes32 multisig = getMultisig(threshold, signers);
 
 		ResponseArr arr = UnsafeResponseArrLib.newResponseArr(responses);
+		bytes32 payload = arr.hash(responses.length);
+
 		for (uint256 i = 0; i < responses.length; i++) {
 			Response memory res = arr.at(i);
 			res.feedId = HashLib.hash(multisig, res.feedId);
 		}
-
-		bytes32 payload = arr.hash(responses.length);
 
 		// verify signatures
 		uint256 idx = 0;

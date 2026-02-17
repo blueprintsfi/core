@@ -55,8 +55,8 @@ contract MultisigOracleTest is Test {
 		for (uint256 i = 0; i < res.length; i++) {
 			vm.assume(!responded[res[i].feedId]);
 			responded[res[i].feedId] = true;
-			res[i].feedId = keccak256(abi.encodePacked(multisig, res[i].feedId));
 			packedResponses.append(abi.encodePacked(res[i].feedId, res[i].data));
+			res[i].feedId = keccak256(abi.encodePacked(multisig, res[i].feedId));
 		}
 
 		bytes32 digest = keccak256(packedResponses);
