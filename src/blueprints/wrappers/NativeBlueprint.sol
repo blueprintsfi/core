@@ -26,6 +26,6 @@ contract NativeBlueprint is BasicBlueprint {
 	}
 
 	function mint(address to, uint256 subaccount) public payable {
-		manager.mint(to, subaccount, msg.value);
+		manager.mint(to, subaccount, 0, msg.value);
 	}
 }
