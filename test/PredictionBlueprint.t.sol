@@ -222,6 +222,8 @@ abstract contract PredictionTestBase is Test {
 			}
 			previous = next;
 		}
+		if (count != 0 && sum.pieces[count - 1].slope == 0)
+			count--;
 		Range[] memory pieces = sum.pieces;
 		assembly ("memory-safe") { mstore(pieces, count) }
 	}
@@ -474,6 +476,48 @@ contract PredictionBlueprintPayoffTest is PredictionTestBase {
 		(uint256 count, Payoff memory normalized) = harness.normalize(p);
 		assertEq(count, 1);
 		assertEq(abi.encode(normalized), abi.encode(p));
+	}
+
+	function test_checkAndNormalizeAcceptsMaximumCoordinate() public pure {
+		Payoff memory p = Payoff(1, new Range[](2));
+		p.pieces[0] = Range(0, type(uint256).max - 1);
+		p.pieces[1] = Range(1, 1);
+		bytes memory encoding = abi.encode(p);
+
+		assertEq(checkAndNormalizePayoff(p), 1);
+		assertEq(abi.encode(p), encoding, "normalization changed payoff");
+		assertEq(valueAt(p, type(uint256).max), 2);
+	}
+
+	function test_checkAndNormalizeRejectsCoordinateOverflow() public {
+		Payoff memory p = Payoff(1, new Range[](2));
+		p.pieces[0] = Range(0, type(uint256).max);
+		p.pieces[1] = Range(1, 1);
+
+		vm.expectRevert(stdError.arithmeticError);
+		harness.normalize(p);
+	}
+
+	function testFuzz_checkAndNormalizeCoordinateOverflow(
+		uint256 firstLength,
+		uint256 secondLength
+	) public {
+		// Intentionally bypass _valid so full-width prefix sums are exercised.
+		firstLength = firstLength == 0 ? 1 : firstLength;
+		secondLength = secondLength == 0 ? 1 : secondLength;
+		Payoff memory p = Payoff(1, new Range[](2));
+		p.pieces[0] = Range(0, firstLength);
+		p.pieces[1] = Range(1, secondLength);
+
+		if (firstLength > type(uint256).max - secondLength) {
+			vm.expectRevert(stdError.arithmeticError);
+			harness.normalize(p);
+		} else {
+			(uint256 count, Payoff memory normalized) = harness.normalize(p);
+			assertEq(count, 1);
+			assertEq(abi.encode(normalized), abi.encode(p), "normalization changed payoff");
+			assertEq(valueAt(normalized, type(uint256).max), 1 + secondLength);
+		}
 	}
 
 	function test_normalizationKnownCoefficientsAndClaim() public pure {

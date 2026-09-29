@@ -138,6 +138,7 @@ function checkAndNormalizePayoff(Payoff memory p) pure returns (uint256 divisor)
 		Range[] memory pieces = p.pieces;
 		int256 prev_slope;
 		uint256 value = p.init_value;
+		uint256 x = 0;
 		for (uint256 i = 0; i < pieces.length; i++) {
 			int256 slope = pieces[i].slope;
 			uint256 length = pieces[i].length;
@@ -146,6 +147,7 @@ function checkAndNormalizePayoff(Payoff memory p) pure returns (uint256 divisor)
 			if (length == 0)
 				revert InputHasZeroLengthRange();
 			prev_slope = slope;
+			x += length;
 			value = muladd(value, length, slope);
 			unchecked {
 				// calculate the absolute value, inspired by OpenZeppelin
