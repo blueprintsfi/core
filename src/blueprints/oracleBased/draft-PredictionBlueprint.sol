@@ -6,13 +6,13 @@ import {gcd} from "../../libraries/Math.sol";
 import {IOracle} from "./oracle/IOracle.sol";
 
 struct Range {
-    int256 slope;
-    uint256 length;
+	int256 slope;
+	uint256 length;
 }
 
 struct Payoff {
-    uint256 init_value;
-    Range[] pieces;
+	uint256 init_value;
+	Range[] pieces;
 }
 
 struct Constraint {
@@ -65,6 +65,17 @@ function muladd(uint256 acc, uint256 a, int256 b) pure returns (uint256) {
 	return acc + a * uint256(b);
 }
 
+function muladd2(uint256 acc0, uint256 acc1, uint256 a, int256 b) pure returns (uint256, uint256) {
+	if (b < 0) {
+		uint256 abs_b;
+		unchecked { abs_b = uint256(-b); }
+		uint256 mult = a * abs_b;
+		return (acc0 - mult, acc1 - mult);
+	}
+	uint256 multiple = a * uint256(b);
+	return (acc0 + multiple, acc1 + multiple);
+}
+
 function add(
 	Payoff memory p0,
 	Payoff memory p1
@@ -73,8 +84,8 @@ function add(
 	res.init_value = current_value;
 
 	if (p1.pieces.length == 0) {
-	    if (p0.pieces.length == 0) {
-		    return res;
+		if (p0.pieces.length == 0) {
+			return res;
 		} else {
 			// p1 number of pieces must be nonzero
 			(p0, p1) = (p1, p0);
@@ -88,6 +99,7 @@ function add(
 	// we monitor values to make sure they don't underflow
 	uint256 p0_value = p0.init_value;
 	uint256 p1_value = p1.init_value;
+	uint256 res_value = p0_value + p1_value;
 	uint256 p1_remaining = p1.pieces[0].length;
 	int256 p1_slope = p1.pieces[0].slope;
 
@@ -105,9 +117,12 @@ function add(
 			(p0_remaining, p1_remaining) = (p1_remaining, p0_remaining);
 		}
 
-		// if must be outside of the invocation in case the sum overflows
-		if (p0_remaining != 0)
-			res_index = appendElement(res, res_index, p0_slope + p1_slope, p0_remaining);
+		// skip overflow checks and computation and short-circuit
+		if (p0_remaining == 0)
+			continue;
+
+		int256 res_slope = p0_slope + p1_slope;
+		res_index = appendElement(res, res_index, res_slope, p0_remaining);
 
 		unchecked { p1_remaining -= p0_remaining; }
 
@@ -115,20 +130,19 @@ function add(
 		// res may overflow – it is caller's responsibility to prevent it
 		p0_value = muladd(p0_value, p0_remaining, p0_slope);
 		p1_value = muladd(p1_value, p0_remaining, p1_slope);
+		res_value = muladd(res_value, p0_remaining, res_slope);
 	}
 
-	if (p1_remaining != 0)
-		res_index = appendElement(res, res_index, p1_slope, p1_remaining);
+	res_index = appendElement(res, res_index, p1_slope, p1_remaining);
 
-	// do not add p0_value since we want to validate p1 nonnegativity now
-	p1_value = muladd(p1_value, p1_remaining, p1_slope);
+	(p1_value, res_value) = muladd2(p1_value, res_value, p1_remaining, p1_slope);
 
 	while (p1_index < p1.pieces.length) {
 		Range memory r = p1.pieces[p1_index];
-		if (r.length != 0)
-			res_index = appendElement(res, res_index, r.slope, r.length);
-		p1_value = muladd(
+		res_index = appendElement(res, res_index, r.slope, r.length);
+		(p1_value, res_value) = muladd2(
 			p1_value,
+			res_value,
 			p1.pieces[p1_index].length,
 			p1.pieces[p1_index].slope
 		);
@@ -187,6 +201,8 @@ function normalizePayoff(Payoff memory p) pure returns (uint256) {
 		int256 slope,
 		uint256 length
 	) pure returns (uint256 /* newidx */) {
+		if (length == 0)
+			return idx;
 		if (idx != 0) {
 			if (res.pieces[idx - 1].slope == slope) {
 				res.pieces[idx - 1].length += length;
@@ -215,11 +231,11 @@ function normalizePayoff(Payoff memory p) pure returns (uint256) {
 contract PredictionBlueprint is BasicBlueprint {
 	IOracle immutable constantOracle;
 
-    constructor(IBlueprintManager m, IOracle oracle) BasicBlueprint(m) {
-    	constantOracle = oracle;
-    }
+	constructor(IBlueprintManager m, IOracle oracle) BasicBlueprint(m) {
+		constantOracle = oracle;
+	}
 
-    function executeAction(bytes calldata action) external view returns (
+	function executeAction(bytes calldata action) external view returns (
 		uint256 subaccount,
 		TokenOp[] memory mint,
 		TokenOp[] memory burn,
@@ -294,7 +310,7 @@ contract PredictionBlueprint is BasicBlueprint {
 			}
 		}
 
-	    return merge ?
+		return merge ?
 			(0, collateral, created, underlying, zero()) :
 			(0, created, collateral, zero(), underlying);
 	}
