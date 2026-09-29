@@ -20,6 +20,10 @@ struct Constraint {
 	bytes32 payoff_hash;
 }
 
+error InputPayoffHasRedundantRanges();
+error InputPayoffHasTerminalZeroSlope();
+error InputHasZeroLengthRange();
+
 function hashPayoff(Payoff memory p) pure returns (bytes32) {
 	// todo: encodePacked
 	return keccak256(abi.encode(p));
@@ -65,17 +69,6 @@ function muladd(uint256 acc, uint256 a, int256 b) pure returns (uint256) {
 	return acc + a * uint256(b);
 }
 
-function muladd2(uint256 acc0, uint256 acc1, uint256 a, int256 b) pure returns (uint256, uint256) {
-	if (b < 0) {
-		uint256 abs_b;
-		unchecked { abs_b = uint256(-b); }
-		uint256 mult = a * abs_b;
-		return (acc0 - mult, acc1 - mult);
-	}
-	uint256 multiple = a * uint256(b);
-	return (acc0 + multiple, acc1 + multiple);
-}
-
 function add(
 	Payoff memory p0,
 	Payoff memory p1
@@ -96,10 +89,6 @@ function add(
 
 	uint256 p0_index = 0;
 	uint256 p1_index = 1;
-	// we monitor values to make sure they don't underflow
-	uint256 p0_value = p0.init_value;
-	uint256 p1_value = p1.init_value;
-	uint256 res_value = p0_value + p1_value;
 	uint256 p1_remaining = p1.pieces[0].length;
 	int256 p1_slope = p1.pieces[0].slope;
 
@@ -112,12 +101,11 @@ function add(
 		if (p0_remaining > p1_remaining) {
 			(p0, p1) = (p1, p0);
 			(p0_index, p1_index) = (p1_index, p0_index);
-			(p0_value, p1_value) = (p1_value, p0_value);
 			(p0_slope, p1_slope) = (p1_slope, p0_slope);
 			(p0_remaining, p1_remaining) = (p1_remaining, p0_remaining);
 		}
 
-		// skip overflow checks and computation and short-circuit
+		// skip overflow checks and short-circuit
 		if (p0_remaining == 0)
 			continue;
 
@@ -125,40 +113,40 @@ function add(
 		res_index = appendElement(res, res_index, res_slope, p0_remaining);
 
 		unchecked { p1_remaining -= p0_remaining; }
-
-		// res will not underflow since p0 and p1 do not underflow
-		// res may overflow – it is caller's responsibility to prevent it
-		p0_value = muladd(p0_value, p0_remaining, p0_slope);
-		p1_value = muladd(p1_value, p0_remaining, p1_slope);
-		res_value = muladd(res_value, p0_remaining, res_slope);
 	}
 
 	res_index = appendElement(res, res_index, p1_slope, p1_remaining);
 
-	(p1_value, res_value) = muladd2(p1_value, res_value, p1_remaining, p1_slope);
-
 	while (p1_index < p1.pieces.length) {
 		Range memory r = p1.pieces[p1_index];
 		res_index = appendElement(res, res_index, r.slope, r.length);
-		(p1_value, res_value) = muladd2(
-			p1_value,
-			res_value,
-			p1.pieces[p1_index].length,
-			p1.pieces[p1_index].slope
-		);
 		p1_index++;
 	}
 
 	Range[] memory pieces = res.pieces;
+	// we merge all but the first ranges, so this has to be done manually
+	if (pieces[res_index - 1].slope == 0) {
+		unchecked { res_index -= 1; }
+	}
 	assembly ("memory-safe") {
 		mstore(pieces, res_index)
 	}
 }
 
-function normalizePayoff(Payoff memory p) pure returns (uint256) {
-		uint256 divisor = p.init_value;
-		for (uint256 i = 0; i < p.pieces.length; i++) {
-			int256 slope = p.pieces[i].slope;
+function checkAndNormalizePayoff(Payoff memory p) pure returns (uint256 divisor) {
+		divisor = p.init_value;
+		Range[] memory pieces = p.pieces;
+		int256 prev_slope;
+		uint256 value = p.init_value;
+		for (uint256 i = 0; i < pieces.length; i++) {
+			int256 slope = pieces[i].slope;
+			uint256 length = pieces[i].length;
+			if (i != 0 && prev_slope == slope)
+				revert InputPayoffHasRedundantRanges();
+			if (length == 0)
+				revert InputHasZeroLengthRange();
+			prev_slope = slope;
+			value = muladd(value, length, slope);
 			unchecked {
 				// calculate the absolute value, inspired by OpenZeppelin
 				int256 mask = slope >> 255;
@@ -167,11 +155,15 @@ function normalizePayoff(Payoff memory p) pure returns (uint256) {
 			}
 		}
 
+		if (pieces.length > 0 && pieces[pieces.length - 1].slope == 0) {
+			revert InputPayoffHasTerminalZeroSlope();
+		}
+
 		// divisor can't be zero, since the whole sum of payoffs would need to
 		// be zero; payoffs are nonnegative, it would mean the addends are also
 		// zero. Adding zero payoffs isn't needed, hence it's ok to revert here.
 		p.init_value /= divisor;
-		for (uint256 i = 0; i < p.pieces.length; i++) {
+		for (uint256 i = 0; i < pieces.length; i++) {
 			// If all slopes are zero or type(int256).min and the init_value is
 			// 0 or 2**255, parsing divisor as an int256 may overflow. In that
 			// case, we want to divide by 2**255, not the negative counterpart.
@@ -181,18 +173,11 @@ function normalizePayoff(Payoff memory p) pure returns (uint256) {
 			// gives zero, the correct output when divided by divisor.
 			if (int256(divisor) == type(int256).min) {
 				// zero if it's zero, -1 if it's type(int256).min
-				p.pieces[i].slope >>= 255;
+				pieces[i].slope >>= 255;
 			} else {
-				p.pieces[i].slope /= int256(divisor);
+				pieces[i].slope /= int256(divisor);
 			}
 		}
-
-		// we merge all but the first ranges, so this has to be done manually
-		if (p.pieces.length == 1 && p.pieces[0].slope == 0) {
-			p.pieces = new Range[](0);
-		}
-
-		return divisor;
 	}
 
 	function appendElement(
@@ -268,7 +253,7 @@ contract PredictionBlueprint is BasicBlueprint {
 				collateral = oneOpArray(tokenId(other_constraints, underlying_token_id), value);
 			}
 
-			uint256 p1_count = normalizePayoff(p1);
+			uint256 p1_count = checkAndNormalizePayoff(p1);
 			(Constraint[] memory constraints,) = addConstraint(
 				other_constraints,
 				feed_id,
@@ -282,7 +267,7 @@ contract PredictionBlueprint is BasicBlueprint {
 
 			Payoff memory sum = add(p1, p2);
 
-			uint256 p1_count = normalizePayoff(p1);
+			uint256 p1_count = checkAndNormalizePayoff(p1);
 			(Constraint[] memory constraints, uint256 index) = addConstraint(
 				other_constraints,
 				feed_id,
@@ -291,11 +276,11 @@ contract PredictionBlueprint is BasicBlueprint {
 
 			created = new TokenOp[](2);
 			created[0] = TokenOp(tokenId(constraints, underlying_token_id), p1_count);
-			uint256 p2_count = normalizePayoff(p2);
+			uint256 p2_count = checkAndNormalizePayoff(p2);
 			constraints[index].payoff_hash = hashPayoff(p2);
 			created[1] = TokenOp(tokenId(constraints, underlying_token_id), p2_count);
 
-			uint256 sum_count = normalizePayoff(sum);
+			uint256 sum_count = checkAndNormalizePayoff(sum);
 			uint256 len = sum.pieces.length;
 			if (len == 0) {
 				// this is the case when the payoff is constant

@@ -8,8 +8,9 @@ import {BlueprintManager, BlueprintCall, HashLib} from "../src/BlueprintManager.
 import {TokenOp} from "../src/interfaces/IBlueprintManager.sol";
 import { AccountingLib } from "../src/libraries/AccountingLib.sol";
 import {ConstantOracle} from "../src/blueprints/oracleBased/oracle/ConstantOracle.sol";
-import { PredictionBlueprint, Payoff, Range, Constraint, add, muladd, valueAt,
-normalizePayoff, hashPayoff, tokenId, addConstraint } from
+import { PredictionBlueprint, Payoff, Range, Constraint, InputPayoffHasRedundantRanges,
+InputPayoffHasTerminalZeroSlope, InputHasZeroLengthRange, add, muladd, valueAt,
+checkAndNormalizePayoff, hashPayoff, tokenId, addConstraint } from
 "../src/blueprints/oracleBased/draft-PredictionBlueprint.sol";
 
 // External boundaries let the tests distinguish a checked revert from a wrong result.
@@ -23,7 +24,7 @@ contract PredictionBlueprintPayoffHarness {
 	}
 
 	function normalize(Payoff memory p) external pure returns (uint256 count, Payoff memory) {
-		count = normalizePayoff(p);
+		count = checkAndNormalizePayoff(p);
 		return (count, p);
 	}
 
@@ -100,27 +101,53 @@ abstract contract PredictionTestBase is Test {
 	}
 
 	// Construct nonnegative paths rather than discarding almost every random input.
-	// Independent array inputs exercise unequal partitions, zero lengths, and both tails.
+	// Independent array inputs exercise unequal partitions and both tails.
 	function _valid(uint256 seed, Range[] memory raw) internal pure returns (Payoff memory p) {
 		uint256 n = raw.length < MAX_PIECES ? raw.length : MAX_PIECES;
 		p = Payoff(0, new Range[](n));
+		uint256 count;
 		int256 level;
 		int256 minimum;
 		int256 maximum;
 		for (uint256 i; i < n; i++) {
 			int256 slope = raw[i].slope % 101;
 			uint256 length = raw[i].length % 17;
-			p.pieces[i] = Range(slope, length);
+			if (length == 0)
+				continue;
+			if (count != 0 && p.pieces[count - 1].slope == slope)
+				p.pieces[count - 1].length += length;
+			else {
+				p.pieces[count] = Range(slope, length);
+				count++;
+			}
 			level += slope * int256(length);
 			if (level < minimum)
 				minimum = level;
 			if (level > maximum)
 				maximum = level;
 		}
+		if (count != 0 && p.pieces[count - 1].slope == 0)
+			count--;
+		Range[] memory pieces = p.pieces;
+		assembly ("memory-safe") { mstore(pieces, count) }
 		// Half the seeds touch zero; retain nonzero constant payoffs for normalization.
 		p.init_value = uint256(-minimum);
 		if (seed % 2 != 0 || minimum == maximum)
 			p.init_value += 1 + seed % 10000;
+	}
+
+
+	function _assertNoAdjacentEqualSlopes(Payoff memory p) internal pure {
+		for (uint256 i = 1; i < p.pieces.length; i++)
+			assertNotEq(p.pieces[i - 1].slope, p.pieces[i].slope, "adjacent equal slopes");
+	}
+
+	function _assertCanonical(Payoff memory p) internal pure {
+		for (uint256 i; i < p.pieces.length; i++)
+			assertNotEq(p.pieces[i].length, 0, "zero-length range");
+		_assertNoAdjacentEqualSlopes(p);
+		if (p.pieces.length != 0)
+			assertNotEq(p.pieces[p.pieces.length - 1].slope, 0, "terminal zero slope");
 	}
 
 	// Binary GCD is independent of the production Euclidean implementation.
@@ -161,8 +188,11 @@ abstract contract PredictionTestBase is Test {
 			uint256 magnitude = _abs(p.pieces[i].slope) / count;
 			q.pieces[i].slope = p.pieces[i].slope < 0 ? -int256(magnitude - 1) - 1 : int256(magnitude);
 		}
-		if (q.pieces.length == 1 && q.pieces[0].slope == 0)
-			q.pieces = new Range[](0);
+		if (q.pieces.length != 0 && q.pieces[q.pieces.length - 1].slope == 0) {
+			Range[] memory pieces = q.pieces;
+			uint256 newLength = pieces.length - 1;
+			assembly ("memory-safe") { mstore(pieces, newLength) }
+		}
 	}
 
 	function _duration(Payoff memory p) internal pure returns (uint256 length) {
@@ -310,10 +340,17 @@ contract PredictionBlueprintPayoffTest is PredictionTestBase {
 	) public pure {
 		Payoff memory p = _valid(seed, a);
 		Payoff memory q = _valid(seed >> 128, b);
+		_assertCanonical(p);
+		_assertCanonical(q);
 		bytes32 beforeP = keccak256(abi.encode(p));
 		bytes32 beforeQ = keccak256(abi.encode(q));
 		Payoff memory sum = add(p, q);
 		Payoff memory reverse = add(q, p);
+		_assertNoAdjacentEqualSlopes(sum);
+		_assertNoAdjacentEqualSlopes(reverse);
+		Payoff memory expectedSum = _referenceSum(p, q);
+		assertEq(abi.encode(sum), abi.encode(expectedSum), "sum structure");
+		assertEq(abi.encode(reverse), abi.encode(expectedSum), "reverse sum structure");
 		assertEq(keccak256(abi.encode(p)), beforeP, "add mutated first input");
 		assertEq(keccak256(abi.encode(q)), beforeQ, "add mutated second input");
 		assertLe(sum.pieces.length, p.pieces.length + q.pieces.length);
@@ -365,31 +402,6 @@ contract PredictionBlueprintPayoffTest is PredictionTestBase {
 		}
 	}
 
-	function testFuzz_normalizeCoefficients(Payoff memory p) public {
-		if (p.pieces.length > MAX_PIECES) {
-			Range[] memory pieces = p.pieces;
-			assembly ("memory-safe") { mstore(pieces, 12) }
-		}
-		uint256 divisor = _referenceDivisor(p);
-		if (divisor == 0) {
-			vm.expectRevert(stdError.divisionError);
-			harness.normalize(p);
-			return;
-		}
-		(uint256 count, Payoff memory normalized) = harness.normalize(p);
-		assertEq(count, divisor, "normalization count");
-		assertEq(normalized.init_value * count, p.init_value);
-		bool removedFlat = p.pieces.length == 1 && p.pieces[0].slope == 0;
-		assertEq(normalized.pieces.length, removedFlat ? 0 : p.pieces.length);
-		for (uint256 i; i < normalized.pieces.length; i++) {
-			assertEq(normalized.pieces[i].length, p.pieces[i].length);
-			assertEq(_abs(normalized.pieces[i].slope) * count, _abs(p.pieces[i].slope));
-			assertEq(normalized.pieces[i].slope < 0, p.pieces[i].slope < 0);
-		}
-		bytes32 before = keccak256(abi.encode(normalized));
-		assertEq(normalizePayoff(normalized), 1, "normalization idempotent count");
-		assertEq(keccak256(abi.encode(normalized)), before, "normalization idempotent payoff");
-	}
 
 	function testFuzz_normalizationPreservesValue(
 		uint256 seed,
@@ -400,8 +412,8 @@ contract PredictionBlueprintPayoffTest is PredictionTestBase {
 		Payoff memory p = _valid(seed, ranges);
 		Payoff memory scaled = _scaled(p, uint256(scaleSeed) + 1);
 		Payoff memory original = _copy(p);
-		uint256 count = normalizePayoff(p);
-		uint256 scaledCount = normalizePayoff(scaled);
+		uint256 count = checkAndNormalizePayoff(p);
+		uint256 scaledCount = checkAndNormalizePayoff(scaled);
 		assertEq(scaledCount, count * (uint256(scaleSeed) + 1));
 		assertEq(keccak256(abi.encode(p)), keccak256(abi.encode(scaled)));
 		assertEq(valueAt(p, x) * count, _value(original, x));
@@ -415,7 +427,7 @@ contract PredictionBlueprintPayoffTest is PredictionTestBase {
 		Payoff memory sum = add(p, _constant(1));
 		assertEq(sum.init_value, 3);
 		assertEq(sum.pieces[0].slope, 2);
-		assertEq(normalizePayoff(p), 2);
+		assertEq(checkAndNormalizePayoff(p), 2);
 		assertEq(sum.pieces[0].slope, 2, "normalizing input corrupted sum");
 		p.pieces[0].length = 7;
 		assertEq(sum.pieces[0].length, 1, "sum shares input range");
@@ -454,18 +466,14 @@ contract PredictionBlueprintPayoffTest is PredictionTestBase {
 		assertEq(valueAt(sum, type(uint256).max), 1);
 	}
 
-	function test_addIgnoresZeroLengthSlopeOverflow() public pure {
-		Payoff memory sum = add(_line(1, type(int256).max, 0), _line(1, 1, 1));
-		assertEq(valueAt(sum, 0), 2);
-		assertEq(valueAt(sum, 1), 3);
-	}
-
-	function test_addRejectsInsolventTail() public {
-		Payoff memory p = Payoff(1, new Range[](2));
-		p.pieces[0] = Range(0, 1);
-		p.pieces[1] = Range(-2, 1);
-		vm.expectRevert(stdError.arithmeticError);
-		harness.sum(_line(10, 0, 1), p);
+	function test_checkAndNormalizeAllowsInteriorZeroSlope() public view {
+		Payoff memory p = Payoff(1, new Range[](3));
+		p.pieces[0] = Range(1, 1);
+		p.pieces[1] = Range(0, 1);
+		p.pieces[2] = Range(-1, 1);
+		(uint256 count, Payoff memory normalized) = harness.normalize(p);
+		assertEq(count, 1);
+		assertEq(abi.encode(normalized), abi.encode(p));
 	}
 
 	function test_normalizationKnownCoefficientsAndClaim() public pure {
@@ -480,7 +488,7 @@ contract PredictionBlueprintPayoffTest is PredictionTestBase {
 		(uint256 id, uint256 count) = _claim(new Constraint[](0), 42, bytes32(uint256(7)), p);
 		assertEq(count, 6);
 		assertEq(id, uint256(keccak256(abi.encode(c, uint256(42)))));
-		assertEq(normalizePayoff(p), 6);
+		assertEq(checkAndNormalizePayoff(p), 6);
 		assertEq(abi.encode(p), abi.encode(expected));
 	}
 
@@ -502,34 +510,16 @@ contract PredictionBlueprintPayoffTest is PredictionTestBase {
 		assertEq(valueAt(p, 0), half);
 		assertEq(valueAt(p, 1), 0);
 		assertEq(valueAt(p, type(uint256).max), 0);
-		assertEq(normalizePayoff(p), half);
+		assertEq(checkAndNormalizePayoff(p), half);
 		assertEq(p.init_value, 1);
 		assertEq(p.pieces[0].slope, -1);
-		p = _line(type(uint256).max, 0, type(uint256).max);
-		assertEq(normalizePayoff(p), type(uint256).max);
+		p = _constant(type(uint256).max);
+		assertEq(checkAndNormalizePayoff(p), type(uint256).max);
 		assertEq(p.init_value, 1);
+		assertEq(p.pieces.length, 0);
 		assertEq(valueAt(p, type(uint256).max), 1);
 	}
 
-	function test_addRejectsInsolventLeftOperandWithConstantRight() public {
-		vm.expectRevert(stdError.arithmeticError);
-		harness.sum(_line(0, -1, 1), _constant(10));
-	}
-
-	function test_addRejectsInsolventRightOperandWithConstantLeft() public {
-		vm.expectRevert(stdError.arithmeticError);
-		harness.sum(_constant(10), _line(0, -1, 1));
-	}
-
-	function test_addRejectsIntermediateDeficitBeforeRecovery() public {
-		// A solvent sum and terminal value must not conceal an intermediate deficit.
-		Payoff memory invalid = Payoff(1, new Range[](3));
-		invalid.pieces[0] = Range(0, 1);
-		invalid.pieces[1] = Range(-2, 1);
-		invalid.pieces[2] = Range(2, 1);
-		vm.expectRevert(stdError.arithmeticError);
-		harness.sum(invalid, _line(10, 0, 1));
-	}
 
 	function test_addRejectsInitialValueOverflow() public {
 		vm.expectRevert(stdError.arithmeticError);
@@ -541,14 +531,39 @@ contract PredictionBlueprintPayoffTest is PredictionTestBase {
 		harness.sum(_line(0, type(int256).max, 1), _line(0, 1, 1));
 	}
 
-	function test_addRejectsComponentOverflowWithConstantRight() public {
+	function test_addRejectsNegativeSlopeOverflow() public {
+		uint256 half = uint256(1) << 255;
 		vm.expectRevert(stdError.arithmeticError);
-		harness.sum(_line(type(uint256).max, 1, 1), _constant(0));
+		harness.sum(_line(half, type(int256).min, 1), _line(1, -1, 1));
 	}
+
 
 	function test_normalizeRejectsZeroPayoff() public {
 		vm.expectRevert(stdError.divisionError);
 		harness.normalize(_constant(0));
+	}
+
+
+	function test_constraintOrderAndDuplicatesAreIdentityBearing() public pure {
+		Constraint[] memory ordered = new Constraint[](2);
+		ordered[0] = Constraint(bytes32(uint256(1)), bytes32(uint256(11)));
+		ordered[1] = Constraint(bytes32(uint256(2)), bytes32(uint256(22)));
+		Constraint[] memory reversed = new Constraint[](2);
+		reversed[0] = ordered[1];
+		reversed[1] = ordered[0];
+		Constraint[] memory duplicate = new Constraint[](3);
+		duplicate[0] = ordered[0];
+		duplicate[1] = ordered[0];
+		duplicate[2] = ordered[1];
+		assertNotEq(tokenId(ordered, 42), tokenId(reversed, 42));
+		assertNotEq(tokenId(ordered, 42), tokenId(duplicate, 42));
+
+		(Constraint[] memory inserted, uint256 index) =
+			addConstraint(reversed, bytes32(uint256(1)), bytes32(uint256(33)));
+		assertEq(index, 0);
+		assertEq(inserted[0].payoff_hash, bytes32(uint256(33)));
+		assertEq(inserted[1].feed_id, bytes32(uint256(2)));
+		assertEq(inserted[2].feed_id, bytes32(uint256(1)));
 	}
 
 	function testFuzz_constraintAndHashBinding(
@@ -557,7 +572,7 @@ contract PredictionBlueprintPayoffTest is PredictionTestBase {
 		bytes32 payoff,
 		uint256 underlying
 	) public pure {
-		// No sorted/unique precondition: insertion must preserve even noncanonical inputs.
+		// Constraint order and duplicates are part of identity; insertion preserves them.
 		bytes32 before = keccak256(abi.encode(c));
 		(Constraint[] memory out, uint256 index) = addConstraint(c, feed, payoff);
 		assertEq(keccak256(abi.encode(out)), keccak256(abi.encode(_insert(c, feed, payoff))));
@@ -726,6 +741,89 @@ contract PredictionBlueprintTest is PredictionBlueprintIntegrationBase {
 				_id(_insert(c, feed, keccak256(abi.encode(sum))), underlying);
 			_op(split.burn, 0, collateralId, sumCount);
 		}
+	}
+
+	function _assertMalformedPayoffRejected(
+		Payoff memory malformed,
+		bytes memory expectedRevert
+	) internal {
+		uint256 underlying = 42;
+		bytes32 feedKey;
+		bytes32 feed = bytes32(HashLib.hash(address(this), uint256(feedKey)));
+		Constraint[] memory c = new Constraint[](0);
+		Payoff memory valid = _constant(1);
+		oracle.cache(feedKey, 0);
+
+		for (uint256 i; i < 2; i++) {
+			bool merge = i != 0;
+			vm.expectRevert(expectedRevert);
+			prediction.executeAction(_action(false, merge, underlying, feed, c, malformed, valid));
+			vm.expectRevert(expectedRevert);
+			prediction.executeAction(_action(false, merge, underlying, feed, c, valid, malformed));
+			vm.expectRevert(expectedRevert);
+			prediction.executeAction(_action(true, merge, underlying, feed, c, malformed, malformed));
+		}
+	}
+
+	function test_actionsRejectZeroLengthRanges() public {
+		Payoff memory malformed = Payoff(1, new Range[](2));
+		malformed.pieces[0] = Range(1, 1);
+		malformed.pieces[1] = Range(type(int256).max, 0);
+		_assertMalformedPayoffRejected(
+			malformed,
+			abi.encodeWithSelector(InputHasZeroLengthRange.selector)
+		);
+	}
+
+	function test_actionsRejectTerminalZeroSlope() public {
+		Payoff memory malformed = Payoff(1, new Range[](1));
+		malformed.pieces[0] = Range(0, 1);
+		_assertMalformedPayoffRejected(
+			malformed,
+			abi.encodeWithSelector(InputPayoffHasTerminalZeroSlope.selector)
+		);
+	}
+
+	function test_actionsRejectAdjacentDuplicateSlopes() public {
+		Payoff memory malformed = Payoff(1, new Range[](2));
+		malformed.pieces[0] = Range(1, 1);
+		malformed.pieces[1] = Range(1, 1);
+		_assertMalformedPayoffRejected(
+			malformed,
+			abi.encodeWithSelector(InputPayoffHasRedundantRanges.selector)
+		);
+	}
+
+	function test_actionsRejectIntermediateDeficitBeforeRecovery() public {
+		Payoff memory malformed = Payoff(1, new Range[](2));
+		malformed.pieces[0] = Range(-2, 1);
+		malformed.pieces[1] = Range(2, 1);
+		_assertMalformedPayoffRejected(malformed, stdError.arithmeticError);
+	}
+
+	function test_splitAndMergeRejectInsolventResult() public {
+		Payoff memory p = _line(0, 1, type(uint256).max);
+		Constraint[] memory c = new Constraint[](0);
+		for (uint256 i; i < 2; i++) {
+			vm.expectRevert(stdError.arithmeticError);
+			prediction.executeAction(_action(false, i != 0, 42, bytes32(0), c, p, p));
+		}
+	}
+
+	function test_rejectsMalformedActionEncoding() public {
+		Constraint[] memory c = new Constraint[](0);
+		Payoff memory p = _constant(1);
+		bytes memory malformedBool = bytes.concat(
+			abi.encode(uint256(2), false, uint256(42), bytes32(uint256(7))),
+			abi.encode(c, p, p)
+		);
+		vm.expectRevert();
+		prediction.executeAction(malformedBool);
+
+		bytes memory truncated = _action(false, false, 42, bytes32(uint256(7)), c, p, p);
+		assembly ("memory-safe") { mstore(truncated, sub(mload(truncated), 1)) }
+		vm.expectRevert();
+		prediction.executeAction(truncated);
 	}
 
 	function testFuzz_redemptionOperations(
