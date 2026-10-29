@@ -9,7 +9,7 @@ import {TokenOp} from "../src/interfaces/IBlueprintManager.sol";
 import { AccountingLib } from "../src/libraries/AccountingLib.sol";
 import {ConstantOracle} from "../src/blueprints/oracleBased/oracle/ConstantOracle.sol";
 import { PredictionBlueprint, Payoff, Range, Constraint, InputPayoffHasRedundantRanges,
-InputPayoffHasTerminalZeroSlope, InputHasZeroLengthRange, add, muladd, valueAt,
+InputPayoffHasTerminalZeroSlope, InputHasZeroLengthRange, ConstraintsNotUnique, add, muladd, valueAt,
 checkAndNormalizePayoff, hashPayoff, tokenId, addConstraint } from
 "../src/blueprints/oracleBased/draft-PredictionBlueprint.sol";
 
@@ -31,10 +31,19 @@ contract PredictionBlueprintPayoffHarness {
 	function multiplyAdd(uint256 acc, uint256 a, int256 b) external pure returns (uint256) {
 		return muladd(acc, a, b);
 	}
+
+	function insertConstraint(
+		Constraint[] memory constraints,
+		bytes32 feed,
+		bytes32 payoff
+	) external pure returns (Constraint[] memory, uint256) {
+		return addConstraint(constraints, feed, payoff);
+	}
 }
 
 abstract contract PredictionTestBase is Test {
 	uint256 internal constant MAX_PIECES = 12;
+	uint256 internal constant MAX_CONSTRAINTS = 12;
 
 	function _copy(Payoff memory p) internal pure returns (Payoff memory) {
 		return abi.decode(abi.encode(p), (Payoff));
@@ -259,14 +268,41 @@ abstract contract PredictionTestBase is Test {
 		}
 	}
 
-	// Independent insertion model: preserve input order, including duplicate feeds.
+	// Canonicalize independently of addConstraint so fuzzing exercises valid contexts
+	// without filtering away inputs containing duplicate or unsorted feeds.
+	function _canonicalContext(
+		Constraint[] memory raw,
+		bytes32 excludedFeed
+	) internal pure returns (Constraint[] memory c) {
+		uint256 n = raw.length < MAX_CONSTRAINTS ? raw.length : MAX_CONSTRAINTS;
+		c = new Constraint[](n);
+		uint256 count;
+		for (uint256 i; i < n; i++) {
+			Constraint memory candidate = raw[i];
+			if (candidate.feed_id == excludedFeed)
+				continue;
+			uint256 index;
+			while (index < count && c[index].feed_id < candidate.feed_id)
+				index++;
+			if (index < count && c[index].feed_id == candidate.feed_id)
+				continue;
+			for (uint256 j = count; j > index; j--)
+				c[j] = c[j - 1];
+			c[index] = candidate;
+			count++;
+		}
+		assembly ("memory-safe") { mstore(c, count) }
+	}
+
+	// Independent insertion model for a canonical context and a fresh feed.
 	function _insert(
 		Constraint[] memory c,
 		bytes32 feed,
 		bytes32 payoff
 	) internal pure returns (Constraint[] memory out) {
 		uint256 index;
-		for (; index < c.length && c[index].feed_id <= feed; index++) {}
+		for (; index < c.length && c[index].feed_id < feed; index++) {}
+		require(index == c.length || c[index].feed_id != feed, "duplicate reference feed");
 		out = new Constraint[](c.length + 1);
 		for (uint256 i; i < out.length; i++) {
 			if (i < index)
@@ -499,26 +535,29 @@ contract PredictionBlueprintPayoffTest is PredictionTestBase {
 		harness.normalize(_constant(0));
 	}
 
-	function test_constraintOrderAndDuplicatesAreIdentityBearing() public pure {
+	function test_tokenIdBindsCanonicalConstraintOrder() public pure {
 		Constraint[] memory ordered = new Constraint[](2);
 		ordered[0] = Constraint(bytes32(uint256(1)), bytes32(uint256(11)));
-		ordered[1] = Constraint(bytes32(uint256(2)), bytes32(uint256(22)));
+		ordered[1] = Constraint(bytes32(uint256(3)), bytes32(uint256(33)));
 		Constraint[] memory reversed = new Constraint[](2);
 		reversed[0] = ordered[1];
 		reversed[1] = ordered[0];
-		Constraint[] memory duplicate = new Constraint[](3);
-		duplicate[0] = ordered[0];
-		duplicate[1] = ordered[0];
-		duplicate[2] = ordered[1];
 		assertNotEq(tokenId(ordered, 42), tokenId(reversed, 42));
-		assertNotEq(tokenId(ordered, 42), tokenId(duplicate, 42));
 
 		(Constraint[] memory inserted, uint256 index) =
-			addConstraint(reversed, bytes32(uint256(1)), bytes32(uint256(33)));
-		assertEq(index, 0);
-		assertEq(inserted[0].payoff_hash, bytes32(uint256(33)));
+			addConstraint(ordered, bytes32(uint256(2)), bytes32(uint256(22)));
+		assertEq(index, 1);
+		assertEq(inserted[0].feed_id, bytes32(uint256(1)));
 		assertEq(inserted[1].feed_id, bytes32(uint256(2)));
-		assertEq(inserted[2].feed_id, bytes32(uint256(1)));
+		assertEq(inserted[2].feed_id, bytes32(uint256(3)));
+	}
+
+	function test_addConstraintRejectsDuplicateFeed() public {
+		Constraint[] memory c = new Constraint[](2);
+		c[0] = Constraint(bytes32(uint256(1)), bytes32(uint256(11)));
+		c[1] = Constraint(bytes32(uint256(2)), bytes32(uint256(22)));
+		vm.expectRevert(ConstraintsNotUnique.selector);
+		harness.insertConstraint(c, bytes32(uint256(2)), bytes32(uint256(33)));
 	}
 
 	function testFuzz_constraintAndHashBinding(
@@ -527,7 +566,7 @@ contract PredictionBlueprintPayoffTest is PredictionTestBase {
 		bytes32 payoff,
 		uint256 underlying
 	) public pure {
-		// Constraint order and duplicates are part of identity; insertion preserves them.
+		c = _canonicalContext(c, feed);
 		bytes32 before = keccak256(abi.encode(c));
 		(Constraint[] memory out, uint256 index) = addConstraint(c, feed, payoff);
 		assertEq(keccak256(abi.encode(out)), keccak256(abi.encode(_insert(c, feed, payoff))));
@@ -675,6 +714,7 @@ contract PredictionBlueprintTest is PredictionBlueprintIntegrationBase {
 	) public view {
 		Payoff memory p = _valid(seed, a);
 		Payoff memory q = _valid(seed >> 128, b);
+		c = _canonicalContext(c, feed);
 		Result memory split = _result(_action(false, false, underlying, feed, c, p, q));
 		_inverse(split, _result(_action(false, true, underlying, feed, c, p, q)));
 		assertEq(split.mint.length, 2);
@@ -787,6 +827,7 @@ contract PredictionBlueprintTest is PredictionBlueprintIntegrationBase {
 		reading = _reading(p, reading);
 		oracle.cache(key, reading);
 		bytes32 feed = bytes32(HashLib.hash(address(this), uint256(key)));
+		c = _canonicalContext(c, feed);
 		Result memory redeem = _result(_action(true, true, underlying, feed, c, p, p));
 		_inverse(redeem, _result(_action(true, false, underlying, feed, c, p, p)));
 		assertEq(redeem.burn.length, 1);
@@ -816,20 +857,22 @@ contract PredictionBlueprintTest is PredictionBlueprintIntegrationBase {
 		reading = _reading(p, reading);
 		uint256 underlying = HashLib.hash(address(this), seed);
 		manager.mint(address(this), seed, cap);
-		oracle.cache(0, reading);
-		bytes32 feed = bytes32(HashLib.hash(address(this), 0));
 		uint256 depth = depthSeed % 4;
 		Constraint[][] memory contexts = new Constraint[][](depth + 1);
 		contexts[0] = new Constraint[](0);
 		Payoff memory funding = _constant(cap);
 		for (uint256 i; i < depth; i++) {
-			_cook(_action(true, false, underlying, feed, contexts[i], funding, funding));
-			contexts[i + 1] = _insert(contexts[i], feed, keccak256(abi.encode(_constant(1))));
+			bytes32 layerFeed = bytes32(HashLib.hash(address(this), i));
+			oracle.cache(bytes32(i), reading);
+			_cook(_action(true, false, underlying, layerFeed, contexts[i], funding, funding));
+			contexts[i + 1] = _insert(contexts[i], layerFeed, keccak256(abi.encode(_constant(1))));
 			assertEq(_balance(_id(contexts[i + 1], underlying)), cap);
 			if (i != 0)
 				assertEq(_balance(_id(contexts[i], underlying)), 0);
 		}
 		Constraint[] memory c = contexts[depth];
+		bytes32 feed = bytes32(HashLib.hash(address(this), depth));
+		oracle.cache(bytes32(depth), reading);
 		(uint256 pId, uint256 pCount) = _claim(c, underlying, feed, p);
 		(uint256 qId, uint256 qCount) = _claim(c, underlying, feed, q);
 		bytes memory split = _action(false, false, underlying, feed, c, p, q);
@@ -866,7 +909,8 @@ contract PredictionBlueprintTest is PredictionBlueprintIntegrationBase {
 		_cook(merge);
 		_positions(pId, 0, qId, 0);
 		for (uint256 i = depth; i != 0; i--) {
-			_cook(_action(true, true, underlying, feed, contexts[i - 1], funding, funding));
+			bytes32 layerFeed = bytes32(HashLib.hash(address(this), i - 1));
+			_cook(_action(true, true, underlying, layerFeed, contexts[i - 1], funding, funding));
 			assertEq(_balance(_id(contexts[i], underlying)), 0);
 		}
 		assertEq(manager.balanceOf(address(this), underlying), cap, "all collateral returned");

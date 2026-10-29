@@ -23,9 +23,9 @@ struct Constraint {
 error InputPayoffHasRedundantRanges();
 error InputPayoffHasTerminalZeroSlope();
 error InputHasZeroLengthRange();
+error ConstraintsNotUnique();
 
 function hashPayoff(Payoff memory p) pure returns (bytes32) {
-	// todo: encodePacked
 	return keccak256(abi.encode(p));
 }
 
@@ -44,8 +44,11 @@ function addConstraint(
 	res = new Constraint[](constraints.length + 1);
 	uint256 i = 0;
 	while (i < constraints.length) {
-		if (feed_id < constraints[i].feed_id) {
+		bytes32 feed = constraints[i].feed_id;
+		if (feed > feed_id) {
 			break;
+		} else if (feed == feed_id) {
+			revert ConstraintsNotUnique();
 		}
 		res[i] = constraints[i];
 		unchecked { i++; }
@@ -73,8 +76,7 @@ function add(
 	Payoff memory p0,
 	Payoff memory p1
 ) pure returns (Payoff memory res) {
-	uint256 current_value = p0.init_value + p1.init_value;
-	res.init_value = current_value;
+	res.init_value = p0.init_value + p1.init_value;
 
 	if (p1.pieces.length == 0) {
 		if (p0.pieces.length == 0) {
@@ -124,7 +126,7 @@ function add(
 	}
 
 	Range[] memory pieces = res.pieces;
-	// we merge all but the first ranges, so this has to be done manually
+	// we merge all but the last ranges, so this has to be done manually
 	if (pieces[res_index - 1].slope == 0) {
 		unchecked { res_index -= 1; }
 	}
@@ -134,86 +136,86 @@ function add(
 }
 
 function checkAndNormalizePayoff(Payoff memory p) pure returns (uint256 divisor) {
-		divisor = p.init_value;
-		Range[] memory pieces = p.pieces;
-		int256 prev_slope;
-		uint256 value = p.init_value;
-		uint256 x = 0;
-		for (uint256 i = 0; i < pieces.length; i++) {
-			int256 slope = pieces[i].slope;
-			uint256 length = pieces[i].length;
-			if (i != 0 && prev_slope == slope)
-				revert InputPayoffHasRedundantRanges();
-			if (length == 0)
-				revert InputHasZeroLengthRange();
-			prev_slope = slope;
-			x += length;
-			value = muladd(value, length, slope);
-			unchecked {
-				// calculate the absolute value, inspired by OpenZeppelin
-				int256 mask = slope >> 255;
-				uint256 abs_slope = uint256((slope + mask) ^ mask);
-				divisor = gcd(divisor, abs_slope);
-			}
-		}
-
-		if (pieces.length > 0 && pieces[pieces.length - 1].slope == 0) {
-			revert InputPayoffHasTerminalZeroSlope();
-		}
-
-		// divisor can't be zero, since the whole sum of payoffs would need to
-		// be zero; payoffs are nonnegative, it would mean the addends are also
-		// zero. Adding zero payoffs isn't needed, hence it's ok to revert here.
-		p.init_value /= divisor;
-		for (uint256 i = 0; i < pieces.length; i++) {
-			// If all slopes are zero or type(int256).min and the init_value is
-			// 0 or 2**255, parsing divisor as an int256 may overflow. In that
-			// case, we want to divide by 2**255, not the negative counterpart.
-			// Else, divide normally. Note that if the divisor is larger than
-			// 2**255, then all slopes must be zero. int256(divisor) produces a
-			// nonzero (negative) number. Dividing zero by a nonzero number
-			// gives zero, the correct output when divided by divisor.
-			if (int256(divisor) == type(int256).min) {
-				// zero if it's zero, -1 if it's type(int256).min
-				pieces[i].slope >>= 255;
-			} else {
-				pieces[i].slope /= int256(divisor);
-			}
-		}
-	}
-
-	function appendElement(
-		Payoff memory res,
-		uint256 idx,
-		int256 slope,
-		uint256 length
-	) pure returns (uint256 /* newidx */) {
+	divisor = p.init_value;
+	Range[] memory pieces = p.pieces;
+	int256 prev_slope;
+	uint256 value = p.init_value;
+	uint256 x = 0;
+	for (uint256 i = 0; i < pieces.length; i++) {
+		int256 slope = pieces[i].slope;
+		uint256 length = pieces[i].length;
+		if (i != 0 && prev_slope == slope)
+			revert InputPayoffHasRedundantRanges();
 		if (length == 0)
-			return idx;
-		if (idx != 0) {
-			if (res.pieces[idx - 1].slope == slope) {
-				res.pieces[idx - 1].length += length;
-				return idx;
-			}
+			revert InputHasZeroLengthRange();
+		prev_slope = slope;
+		x += length;
+		value = muladd(value, length, slope);
+		unchecked {
+			// calculate the absolute value, inspired by OpenZeppelin
+			int256 mask = slope >> 255;
+			uint256 abs_slope = uint256((slope + mask) ^ mask);
+			divisor = gcd(divisor, abs_slope);
 		}
-		res.pieces[idx].slope = slope;
-		res.pieces[idx].length = length;
-		return idx + 1;
 	}
 
-	function valueAt(Payoff memory p, uint256 x) pure returns (uint256) {
-		uint256 current_value = p.init_value;
-		for (uint256 i = 0; i < p.pieces.length; i++) {
-			Range memory r = p.pieces[i];
-			if (r.length >= x) {
-				return muladd(current_value, x, r.slope);
-			}
-			current_value = muladd(current_value, r.length, r.slope);
-			unchecked { x -= r.length; }
-		}
-		// the slope is zero after the last range, so returning is correct
-		return current_value;
+	if (pieces.length > 0 && pieces[pieces.length - 1].slope == 0) {
+		revert InputPayoffHasTerminalZeroSlope();
 	}
+
+	// divisor can't be zero, since the whole sum of payoffs would need to
+	// be zero; payoffs are nonnegative, it would mean the addends are also
+	// zero. Adding zero payoffs isn't needed, hence it's ok to revert here.
+	p.init_value /= divisor;
+	for (uint256 i = 0; i < pieces.length; i++) {
+		// If all slopes are zero or type(int256).min and the init_value is
+		// 0 or 2**255, parsing divisor as an int256 may overflow. In that
+		// case, we want to divide by 2**255, not the negative counterpart.
+		// Else, divide normally. Note that if the divisor is larger than
+		// 2**255, then all slopes must be zero. int256(divisor) produces a
+		// nonzero (negative) number. Dividing zero by a nonzero number
+		// gives zero, the correct output when divided by divisor.
+		if (int256(divisor) == type(int256).min) {
+			// zero if it's zero, -1 if it's type(int256).min
+			pieces[i].slope >>= 255;
+		} else {
+			pieces[i].slope /= int256(divisor);
+		}
+	}
+}
+
+function appendElement(
+	Payoff memory res,
+	uint256 idx,
+	int256 slope,
+	uint256 length
+) pure returns (uint256 /* newidx */) {
+	if (length == 0)
+		return idx;
+	if (idx != 0) {
+		if (res.pieces[idx - 1].slope == slope) {
+			res.pieces[idx - 1].length += length;
+			return idx;
+		}
+	}
+	res.pieces[idx].slope = slope;
+	res.pieces[idx].length = length;
+	return idx + 1;
+}
+
+function valueAt(Payoff memory p, uint256 x) pure returns (uint256) {
+	uint256 current_value = p.init_value;
+	for (uint256 i = 0; i < p.pieces.length; i++) {
+		Range memory r = p.pieces[i];
+		if (r.length >= x) {
+			return muladd(current_value, x, r.slope);
+		}
+		current_value = muladd(current_value, r.length, r.slope);
+		unchecked { x -= r.length; }
+	}
+	// the slope is zero after the last range, so returning is correct
+	return current_value;
+}
 
 contract PredictionBlueprint is BasicBlueprint {
 	IOracle immutable constantOracle;
