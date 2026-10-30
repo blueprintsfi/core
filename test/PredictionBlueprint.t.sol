@@ -9,8 +9,8 @@ import {TokenOp} from "../src/interfaces/IBlueprintManager.sol";
 import { AccountingLib } from "../src/libraries/AccountingLib.sol";
 import {ConstantOracle} from "../src/blueprints/oracleBased/oracle/ConstantOracle.sol";
 import { PredictionBlueprint, Payoff, Range, Constraint, InputPayoffHasRedundantRanges,
-	InputPayoffHasTerminalZeroSlope, InputHasZeroLengthRange, InputIsConstantPayoff, ConstraintsNotUnique,
-	add, muladd, valueAt,
+	InputPayoffHasTerminalZeroSlope, InputHasZeroLengthRange, InputIsConstantPayoff, ConstraintsNotSortedOrUnique,
+	ZeroFeedId, add, muladd, valueAt,
 checkAndNormalizePayoff, hashPayoff, tokenId, addConstraint } from
 "../src/blueprints/oracleBased/draft-PredictionBlueprint.sol";
 
@@ -280,7 +280,7 @@ abstract contract PredictionTestBase is Test {
 	}
 
 	// Canonicalize independently of addConstraint so fuzzing exercises valid contexts
-	// without filtering away inputs containing duplicate or unsorted feeds.
+	// while discarding duplicate, unsorted, and invalid zero feeds.
 	function _canonicalContext(
 		Constraint[] memory raw,
 		bytes32 excludedFeed
@@ -290,7 +290,7 @@ abstract contract PredictionTestBase is Test {
 		uint256 count;
 		for (uint256 i; i < n; i++) {
 			Constraint memory candidate = raw[i];
-			if (candidate.feed_id == excludedFeed)
+			if (candidate.feed_id == bytes32(0) || candidate.feed_id == excludedFeed)
 				continue;
 			uint256 index;
 			while (index < count && c[index].feed_id < candidate.feed_id)
@@ -567,8 +567,14 @@ contract PredictionBlueprintPayoffTest is PredictionTestBase {
 		Constraint[] memory c = new Constraint[](2);
 		c[0] = Constraint(bytes32(uint256(1)), bytes32(uint256(11)));
 		c[1] = Constraint(bytes32(uint256(2)), bytes32(uint256(22)));
-		vm.expectRevert(ConstraintsNotUnique.selector);
+		vm.expectRevert(ConstraintsNotSortedOrUnique.selector);
 		harness.insertConstraint(c, bytes32(uint256(2)), bytes32(uint256(33)));
+	}
+
+	function test_addConstraintRejectsZeroFeed() public {
+		Constraint[] memory c = new Constraint[](0);
+		vm.expectRevert(ZeroFeedId.selector);
+		harness.insertConstraint(c, bytes32(0), bytes32(uint256(33)));
 	}
 
 	function testFuzz_constraintAndHashBinding(
@@ -577,6 +583,8 @@ contract PredictionBlueprintPayoffTest is PredictionTestBase {
 		bytes32 payoff,
 		uint256 underlying
 	) public pure {
+		if (feed == bytes32(0))
+			feed = bytes32(uint256(1));
 		c = _canonicalContext(c, feed);
 		bytes32 before = keccak256(abi.encode(c));
 		(Constraint[] memory out, uint256 index) = addConstraint(c, feed, payoff);
@@ -728,6 +736,8 @@ contract PredictionBlueprintTest is PredictionBlueprintIntegrationBase {
 	) public view {
 		Payoff memory p = _nonconstant(seed, a);
 		Payoff memory q = _valid(seed >> 128, b);
+		if (feed == bytes32(0))
+			feed = bytes32(uint256(1));
 		c = _canonicalContext(c, feed);
 		Result memory split = _result(_action(false, false, underlying, feed, c, p, q));
 		_inverse(split, _result(_action(false, true, underlying, feed, c, p, q)));
@@ -836,7 +846,7 @@ contract PredictionBlueprintTest is PredictionBlueprintIntegrationBase {
 		Payoff memory p = _line(0, 1, type(uint256).max);
 		Constraint[] memory c = new Constraint[](0);
 		vm.expectRevert(stdError.arithmeticError);
-		prediction.executeAction(_action(false, false, 42, bytes32(0), c, p, p));
+		prediction.executeAction(_action(false, false, 42, bytes32(uint256(1)), c, p, p));
 	}
 
 	function test_rejectsMalformedActionEncoding() public {

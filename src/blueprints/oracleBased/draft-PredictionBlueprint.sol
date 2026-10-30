@@ -24,7 +24,8 @@ error InputPayoffHasRedundantRanges();
 error InputPayoffHasTerminalZeroSlope();
 error InputHasZeroLengthRange();
 error InputIsConstantPayoff();
-error ConstraintsNotUnique();
+error ConstraintsNotSortedOrUnique();
+error ZeroFeedId();
 
 function hashPayoff(Payoff memory p) pure returns (bytes32) {
 	return keccak256(abi.encode(p));
@@ -42,23 +43,38 @@ function addConstraint(
 	bytes32 feed_id,
 	bytes32 payoff_hash
 ) pure returns (Constraint[] memory res, uint256 index) {
+	if (feed_id == 0) {
+		revert ZeroFeedId();
+	}
 	res = new Constraint[](constraints.length + 1);
 	uint256 i = 0;
+	bytes32 previous_feed = bytes32(0);
 	while (i < constraints.length) {
 		bytes32 feed = constraints[i].feed_id;
-		if (feed > feed_id) {
+		if (feed >= feed_id) {
 			break;
-		} else if (feed == feed_id) {
-			revert ConstraintsNotUnique();
 		}
+
+		if (feed <= previous_feed) {
+			revert ConstraintsNotSortedOrUnique();
+		}
+		previous_feed = feed;
+
 		res[i] = constraints[i];
 		unchecked { i++; }
 	}
 
 	res[i] = Constraint({ feed_id: feed_id, payoff_hash: payoff_hash });
 	index = i;
+	previous_feed = feed_id;
 
 	while (i < constraints.length) {
+		bytes32 feed = constraints[i].feed_id;
+		if (feed <= previous_feed) {
+			revert ConstraintsNotSortedOrUnique();
+		}
+		previous_feed = feed;
+
 		res[i + 1] = constraints[i];
 		unchecked { i++; }
 	}
