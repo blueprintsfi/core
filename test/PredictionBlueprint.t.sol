@@ -9,7 +9,8 @@ import {TokenOp} from "../src/interfaces/IBlueprintManager.sol";
 import { AccountingLib } from "../src/libraries/AccountingLib.sol";
 import {ConstantOracle} from "../src/blueprints/oracleBased/oracle/ConstantOracle.sol";
 import { PredictionBlueprint, Payoff, Range, Constraint, InputPayoffHasRedundantRanges,
-InputPayoffHasTerminalZeroSlope, InputHasZeroLengthRange, ConstraintsNotUnique, add, muladd, valueAt,
+	InputPayoffHasTerminalZeroSlope, InputHasZeroLengthRange, InputIsConstantPayoff, ConstraintsNotUnique,
+	add, muladd, valueAt,
 checkAndNormalizePayoff, hashPayoff, tokenId, addConstraint } from
 "../src/blueprints/oracleBased/draft-PredictionBlueprint.sol";
 
@@ -143,6 +144,16 @@ abstract contract PredictionTestBase is Test {
 		p.init_value = uint256(-minimum);
 		if (seed % 2 != 0 || minimum == maximum)
 			p.init_value += 1 + seed % 10000;
+	}
+
+	function _nonconstant(uint256 seed, Range[] memory raw) internal pure returns (Payoff memory p) {
+		p = _valid(seed, raw);
+		if (p.pieces.length == 0)
+			p = _line(1 + seed % 10000, int256(1 + seed % 100), 1 + seed % 17);
+	}
+
+	function _unitPayoffAt(uint256 reading) internal pure returns (Payoff memory) {
+		return reading == 0 ? _line(1, -1, 1) : _line(0, 1, 1);
 	}
 
 	function _assertNoAdjacentEqualSlopes(Payoff memory p) internal pure {
@@ -604,10 +615,17 @@ abstract contract PredictionBlueprintIntegrationBase is PredictionTestBase {
 		Constraint[] memory c,
 		Payoff memory p,
 		Payoff memory q
-	) internal pure returns (bytes memory) {
-		// The blueprint decodes the header and dynamic payload separately.
-		return bytes.concat(abi.encode(redeem, merge, underlying, feed),
-			redeem ? abi.encode(c, p) : abi.encode(c, p, q));
+	) internal pure returns (bytes memory action) {
+		if (redeem)
+			return abi.encode(redeem, merge, underlying, feed, c, p);
+
+		action = abi.encode(redeem, merge, underlying, feed, c, p, q);
+		// p2 is decoded from action[192:], so rebase its top-level ABI offset
+		// from the start of action to the start of that slice.
+		assembly ("memory-safe") {
+			let p2Offset := add(action, 0xe0)
+			mstore(p2Offset, sub(mload(p2Offset), 0xc0))
+		}
 	}
 
 	function _result(bytes memory action) internal view returns (Result memory r) {
@@ -690,7 +708,7 @@ contract PredictionBlueprintTest is PredictionBlueprintIntegrationBase {
 		}
 	}
 
-	function test_splitConstantOperandUsesUnmodifiedSum() public view {
+	function test_splitConstantOperandUsesUnderlying() public view {
 		Constraint[] memory c = new Constraint[](0);
 		bytes32 feed = bytes32(uint256(7));
 		Result memory split = _result(_action(false, false, 42, feed, c, _line(2, 2, 1), _constant(1)));
@@ -699,9 +717,12 @@ contract PredictionBlueprintTest is PredictionBlueprintIntegrationBase {
 		assertEq(split.burn.length, 1);
 		_op(split.burn, 0, uint256(keccak256(abi.encode(expected, uint256(42)))), 1);
 		expected[0].payoff_hash = keccak256(abi.encode(_line(1, 1, 1)));
+		assertEq(split.mint.length, 2);
 		_op(split.mint, 0, uint256(keccak256(abi.encode(expected, uint256(42)))), 2);
-		expected[0].payoff_hash = keccak256(abi.encode(_constant(1)));
-		_op(split.mint, 1, uint256(keccak256(abi.encode(expected, uint256(42)))), 1);
+		_op(split.mint, 1, 0, 0);
+		assertEq(split.give.length, 1);
+		_op(split.give, 0, 42, 1);
+		assertEq(split.take.length, 0);
 	}
 
 	function testFuzz_splitMergeOperations(
@@ -712,17 +733,29 @@ contract PredictionBlueprintTest is PredictionBlueprintIntegrationBase {
 		Range[] memory b,
 		uint256 seed
 	) public view {
-		Payoff memory p = _valid(seed, a);
+		Payoff memory p = _nonconstant(seed, a);
 		Payoff memory q = _valid(seed >> 128, b);
 		c = _canonicalContext(c, feed);
 		Result memory split = _result(_action(false, false, underlying, feed, c, p, q));
 		_inverse(split, _result(_action(false, true, underlying, feed, c, p, q)));
 		assertEq(split.mint.length, 2);
-		assertEq(split.give.length, 0);
 		(uint256 pId, uint256 pCount) = _claim(c, underlying, feed, p);
-		(uint256 qId, uint256 qCount) = _claim(c, underlying, feed, q);
 		_op(split.mint, 0, pId, pCount);
-		_op(split.mint, 1, qId, qCount);
+		if (q.pieces.length == 0) {
+			uint256 qCount = _referenceDivisor(q);
+			if (c.length == 0) {
+				_op(split.mint, 1, 0, 0);
+				assertEq(split.give.length, 1);
+				_op(split.give, 0, underlying, qCount);
+			} else {
+				assertEq(split.give.length, 0);
+				_op(split.mint, 1, _id(c, underlying), qCount);
+			}
+		} else {
+			(uint256 qId, uint256 qCount) = _claim(c, underlying, feed, q);
+			assertEq(split.give.length, 0);
+			_op(split.mint, 1, qId, qCount);
+		}
 		(uint256 sumCount, Payoff memory sum) = _referenceNormalize(_referenceSum(p, q));
 		if (sum.pieces.length == 0 && c.length == 0) {
 			assertEq(split.burn.length, 0);
@@ -745,7 +778,7 @@ contract PredictionBlueprintTest is PredictionBlueprintIntegrationBase {
 		bytes32 feedKey;
 		bytes32 feed = bytes32(HashLib.hash(address(this), uint256(feedKey)));
 		Constraint[] memory c = new Constraint[](0);
-		Payoff memory valid = _constant(1);
+		Payoff memory valid = _line(1, 1, 1);
 		oracle.cache(feedKey, 0);
 
 		vm.expectRevert(expectedRevert);
@@ -754,6 +787,20 @@ contract PredictionBlueprintTest is PredictionBlueprintIntegrationBase {
 		prediction.executeAction(_action(false, false, underlying, feed, c, valid, malformed));
 		vm.expectRevert(expectedRevert);
 		prediction.executeAction(_action(true, false, underlying, feed, c, malformed, malformed));
+	}
+
+	function test_actionsRejectConstantP1() public {
+		Constraint[] memory c = new Constraint[](0);
+		Payoff memory constantPayoff = _constant(1);
+		Payoff memory nonconstantPayoff = _line(1, 1, 1);
+		bytes32 feedKey;
+		bytes32 feed = bytes32(HashLib.hash(address(this), uint256(feedKey)));
+		oracle.cache(feedKey, 0);
+
+		vm.expectRevert(InputIsConstantPayoff.selector);
+		prediction.executeAction(_action(false, false, 42, feed, c, constantPayoff, nonconstantPayoff));
+		vm.expectRevert(InputIsConstantPayoff.selector);
+		prediction.executeAction(_action(true, false, 42, feed, c, constantPayoff, constantPayoff));
 	}
 
 	function test_actionsRejectZeroLengthRanges() public {
@@ -823,7 +870,7 @@ contract PredictionBlueprintTest is PredictionBlueprintIntegrationBase {
 		uint256 seed,
 		uint256 reading
 	) public {
-		Payoff memory p = _valid(seed, ranges);
+		Payoff memory p = _nonconstant(seed, ranges);
 		reading = _reading(p, reading);
 		oracle.cache(key, reading);
 		bytes32 feed = bytes32(HashLib.hash(address(this), uint256(key)));
@@ -852,7 +899,7 @@ contract PredictionBlueprintTest is PredictionBlueprintIntegrationBase {
 		uint256 reading,
 		uint8 depthSeed
 	) public {
-		Payoff memory p = _valid(seed, ranges);
+		Payoff memory p = _nonconstant(seed, ranges);
 		(Payoff memory q, uint256 cap) = _complement(p);
 		reading = _reading(p, reading);
 		uint256 underlying = HashLib.hash(address(this), seed);
@@ -860,12 +907,13 @@ contract PredictionBlueprintTest is PredictionBlueprintIntegrationBase {
 		uint256 depth = depthSeed % 4;
 		Constraint[][] memory contexts = new Constraint[][](depth + 1);
 		contexts[0] = new Constraint[](0);
-		Payoff memory funding = _constant(cap);
+		Payoff memory fundingUnit = _unitPayoffAt(reading);
+		Payoff memory funding = _scaled(fundingUnit, cap);
 		for (uint256 i; i < depth; i++) {
 			bytes32 layerFeed = bytes32(HashLib.hash(address(this), i));
 			oracle.cache(bytes32(i), reading);
 			_cook(_action(true, false, underlying, layerFeed, contexts[i], funding, funding));
-			contexts[i + 1] = _insert(contexts[i], layerFeed, keccak256(abi.encode(_constant(1))));
+			contexts[i + 1] = _insert(contexts[i], layerFeed, keccak256(abi.encode(fundingUnit)));
 			assertEq(_balance(_id(contexts[i + 1], underlying)), cap);
 			if (i != 0)
 				assertEq(_balance(_id(contexts[i], underlying)), 0);
@@ -923,8 +971,8 @@ contract PredictionBlueprintTest is PredictionBlueprintIntegrationBase {
 		Range[] memory b,
 		uint256 reading
 	) public {
-		Payoff memory p = _valid(seed, a);
-		Payoff memory q = _valid(seed >> 128, b);
+		Payoff memory p = _nonconstant(seed, a);
+		Payoff memory q = _nonconstant(seed >> 128, b);
 		Payoff memory sum = _referenceSum(p, q);
 		(uint256 sumCount, Payoff memory normalized) = _referenceNormalize(sum);
 		reading = _reading(reading % 2 == 0 ? p : q, reading / 2);

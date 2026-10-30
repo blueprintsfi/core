@@ -23,6 +23,7 @@ struct Constraint {
 error InputPayoffHasRedundantRanges();
 error InputPayoffHasTerminalZeroSlope();
 error InputHasZeroLengthRange();
+error InputIsConstantPayoff();
 error ConstraintsNotUnique();
 
 function hashPayoff(Payoff memory p) pure returns (bytes32) {
@@ -237,37 +238,42 @@ contract PredictionBlueprint is BasicBlueprint {
 		bytes32 feed_id;
 		Constraint[] memory other_constraints;
 		Payoff memory p1;
-		(redeem, merge, underlying_token_id, feed_id) =
-			abi.decode(action[:128], (bool, bool, uint256, bytes32));
+		(redeem, merge, underlying_token_id, feed_id, other_constraints, p1) =
+			abi.decode(action, (bool, bool, uint256, bytes32, Constraint[], Payoff));
 
-		TokenOp[] memory underlying = zero();
-		TokenOp[] memory collateral = zero();
-		TokenOp[] memory created = zero();
+		bool use_underlying = other_constraints.length == 0;
+		uint256 underlying_or_collateral = use_underlying ?
+			underlying_token_id :
+			tokenId(other_constraints, underlying_token_id);
+
+		TokenOp[] memory sum_gt = zero(); // give/take
+		TokenOp[] memory addends_gt = zero();
+		TokenOp[] memory sum_mb = zero(); // mint/burn
+		TokenOp[] memory addends_mb = zero();
 
 		if (redeem) {
-			(other_constraints, p1) =
-				abi.decode(action[128:], (Constraint[], Payoff));
-
 			uint256 reading = constantOracle.getReading(feed_id);
 			uint256 value = valueAt(p1, reading);
 
-			if (other_constraints.length == 0) {
-				underlying = oneOpArray(underlying_token_id, value);
+			if (use_underlying) {
+				sum_gt = oneOpArray(underlying_or_collateral, value);
 			} else {
-				collateral = oneOpArray(tokenId(other_constraints, underlying_token_id), value);
+				sum_mb = oneOpArray(underlying_or_collateral, value);
 			}
 
 			uint256 p1_count = checkAndNormalizePayoff(p1);
+			if (p1.pieces.length == 0) {
+				revert InputIsConstantPayoff();
+			}
 			(Constraint[] memory constraints,) = addConstraint(
 				other_constraints,
 				feed_id,
 				hashPayoff(p1)
 			);
-			created = oneOpArray(tokenId(constraints, underlying_token_id), p1_count);
+			addends_mb = oneOpArray(tokenId(constraints, underlying_token_id), p1_count);
 		} else {
 			Payoff memory p2;
-			(other_constraints, p1, p2) =
-				abi.decode(action[128:], (Constraint[], Payoff, Payoff));
+			p2 = abi.decode(action[192:], (Payoff));
 
 			Payoff memory sum = add(p1, p2);
 
@@ -278,29 +284,40 @@ contract PredictionBlueprint is BasicBlueprint {
 				hashPayoff(p1)
 			);
 
-			created = new TokenOp[](2);
-			created[0] = TokenOp(tokenId(constraints, underlying_token_id), p1_count);
+			addends_mb = new TokenOp[](2);
+			if (p1.pieces.length == 0) {
+				revert InputIsConstantPayoff();
+			}
+			addends_mb[0] = TokenOp(tokenId(constraints, underlying_token_id), p1_count);
+
 			uint256 p2_count = checkAndNormalizePayoff(p2);
-			constraints[index].payoff_hash = hashPayoff(p2);
-			created[1] = TokenOp(tokenId(constraints, underlying_token_id), p2_count);
+			// allow p2 to be constant, unlike p1; means adding collateral
+			if (p2.pieces.length == 0) {
+				if (use_underlying) {
+					addends_gt = oneOpArray(underlying_or_collateral, p2_count);
+				} else {
+					addends_mb[1] = TokenOp(underlying_or_collateral, p2_count);
+				}
+			} else {
+				constraints[index].payoff_hash = hashPayoff(p2);
+				addends_mb[1] = TokenOp(tokenId(constraints, underlying_token_id), p2_count);
+			}
 
 			uint256 sum_count = checkAndNormalizePayoff(sum);
-			uint256 len = sum.pieces.length;
-			if (len == 0) {
-				// this is the case when the payoff is constant
-				if (other_constraints.length == 0) {
-					underlying = oneOpArray(underlying_token_id, sum_count);
+			if (sum.pieces.length == 0) {
+				if (use_underlying) {
+					sum_gt = oneOpArray(underlying_token_id, sum_count);
 				} else {
-					collateral = oneOpArray(tokenId(other_constraints, underlying_token_id), sum_count);
+					sum_mb = oneOpArray(tokenId(other_constraints, underlying_token_id), sum_count);
 				}
 			} else {
 				constraints[index].payoff_hash = hashPayoff(sum);
-				collateral = oneOpArray(tokenId(constraints, underlying_token_id), sum_count);
+				sum_mb = oneOpArray(tokenId(constraints, underlying_token_id), sum_count);
 			}
 		}
 
 		return merge ?
-			(0, collateral, created, underlying, zero()) :
-			(0, created, collateral, zero(), underlying);
+			(0, sum_mb, addends_mb, sum_gt, addends_gt) :
+			(0, addends_mb, sum_mb, addends_gt, sum_gt);
 	}
 }
