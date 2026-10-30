@@ -272,8 +272,11 @@ contract PredictionBlueprint is BasicBlueprint {
 			);
 			addends_mb = oneOpArray(tokenId(constraints, underlying_token_id), p1_count);
 		} else {
-			Payoff memory p2;
-			p2 = abi.decode(action[192:], (Payoff));
+			Payoff calldata p2_c;
+			assembly ("memory-safe") {
+				p2_c := add(action.offset, calldataload(add(action.offset, 192)))
+			}
+			Payoff memory p2 = p2_c;
 
 			Payoff memory sum = add(p1, p2);
 

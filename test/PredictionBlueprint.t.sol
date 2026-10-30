@@ -615,17 +615,10 @@ abstract contract PredictionBlueprintIntegrationBase is PredictionTestBase {
 		Constraint[] memory c,
 		Payoff memory p,
 		Payoff memory q
-	) internal pure returns (bytes memory action) {
-		if (redeem)
-			return abi.encode(redeem, merge, underlying, feed, c, p);
-
-		action = abi.encode(redeem, merge, underlying, feed, c, p, q);
-		// p2 is decoded from action[192:], so rebase its top-level ABI offset
-		// from the start of action to the start of that slice.
-		assembly ("memory-safe") {
-			let p2Offset := add(action, 0xe0)
-			mstore(p2Offset, sub(mload(p2Offset), 0xc0))
-		}
+	) internal pure returns (bytes memory) {
+		return redeem ?
+			abi.encode(redeem, merge, underlying, feed, c, p) :
+			abi.encode(redeem, merge, underlying, feed, c, p, q);
 	}
 
 	function _result(bytes memory action) internal view returns (Result memory r) {
